@@ -9,6 +9,7 @@ foreign func FfiRunTdjsonPhase0Probe(): CString
 func runTdjsonPhase0Probe(): String {
     let result = unsafe { FfiRunTdjsonPhase0Probe() }
     let value = result.toString()
+    // FfiFreeString is defined in demo_session_store.cj
     unsafe { FfiFreeString(result) }
     return value
 }

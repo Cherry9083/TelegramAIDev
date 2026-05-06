@@ -73,6 +73,15 @@ elif [[ "${buildTarget}" == "ios-sim" ]]; then
 fi
 
 if [[ "${buildTarget}" == "ios" ]] || [[ "${buildTarget}" == "ios-sim" ]]; then
+    # Build TDLib for iOS
+    echo "Building TDLib for ${buildTarget}..."
+    tdlib_build_script="$SCRIPT_DIR/scripts/build_tdlib_phase0.sh"
+    if [[ -f "$tdlib_build_script" ]]; then
+        bash "$tdlib_build_script" "${buildTarget}"
+    else
+        echo "Warning: TDLib build script not found at $tdlib_build_script, skipping TDLib build"
+    fi
+
     # compile oc_bridge code
     oc_bridge_dir="$SCRIPT_DIR/ios/oc_bridge"
     echo "Compiling Objective-C code in $oc_bridge_dir"

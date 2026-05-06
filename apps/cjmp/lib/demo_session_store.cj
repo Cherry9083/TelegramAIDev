@@ -192,5 +192,5 @@ foreign func FfiLoadDemoSessionPhone(): CString
 @When[target_platform == "ios" || target_platform == "ios-sim"]
 foreign func FfiClearDemoSessionPhone(): Unit
 
-@When[target_platform == "ios" || target_platform == "ios-sim"]
+@When[target_platform == "android" || target_platform == "ios" || target_platform == "ios-sim"]
 foreign func FfiFreeString(str: CString): Unit

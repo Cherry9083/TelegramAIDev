@@ -8,7 +8,6 @@ A new keels project.
 
 ## ios
 测试：
-keels build ios
 ./build.sh debug ios autorun
 
 xcodebuild test \

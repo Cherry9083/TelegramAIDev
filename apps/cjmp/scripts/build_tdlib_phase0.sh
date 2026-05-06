@@ -123,6 +123,11 @@ build_android_tdjson() {
     local out_dir="$ARTIFACT_ROOT/android/arm64-v8a"
     local lib_path
 
+    if [[ -f "$out_dir/libtdjson.so" ]]; then
+        echo "Android libtdjson.so already exists, skipping build"
+        return
+    fi
+
     rm -rf "$build_dir"
     cmake \
         -S "$TD_SOURCE_DIR" \
@@ -188,6 +193,11 @@ build_ios_simulator_tdjson() {
     local out_dir="$ARTIFACT_ROOT/ios-sim"
     local lib_path
 
+    if [[ -f "$out_dir/libtdjson.dylib" ]]; then
+        echo "iOS simulator libtdjson.dylib already exists, skipping build"
+        return
+    fi
+
     rm -rf "$build_dir"
     cmake \
         -S "$TD_SOURCE_DIR" \
@@ -217,6 +227,73 @@ build_ios_simulator_tdjson() {
     install_name_tool -id @rpath/libtdjson.dylib "$out_dir/libtdjson.dylib"
 }
 
+build_ios_device_openssl() {
+    local openssl_src="$1"
+    local out_dir="$ARTIFACT_ROOT/ios/openssl"
+    local work_dir="$WORK_ROOT/openssl-ios-device"
+    local ios_sdk_path="${IOS_SDK_PATH:-$(xcrun --sdk iphoneos --show-sdk-path)}"
+
+    if [[ -f "$out_dir/lib/libcrypto.a" && -f "$out_dir/lib/libssl.a" ]]; then
+        return
+    fi
+
+    rm -rf "$work_dir"
+    git clone --quiet "$openssl_src" "$work_dir"
+
+    pushd "$work_dir" >/dev/null
+    export CFLAGS="-arch arm64 -isysroot $ios_sdk_path"
+    export CXXFLAGS="$CFLAGS"
+    export LDFLAGS="$CFLAGS"
+    ./Configure ios64-xcrun no-shared
+    make -j"$JOBS" -s
+    popd >/dev/null
+
+    rm -rf "$out_dir"
+    mkdir -p "$out_dir/lib"
+    cp "$work_dir/libcrypto.a" "$work_dir/libssl.a" "$out_dir/lib/"
+    cp -R "$work_dir/include" "$out_dir/"
+}
+
+build_ios_device_tdjson() {
+    local build_dir="$WORK_ROOT/td-ios-device"
+    local openssl_dir="$ARTIFACT_ROOT/ios/openssl"
+    local out_dir="$ARTIFACT_ROOT/ios"
+    local lib_path
+
+    if [[ -f "$out_dir/libtdjson.dylib" ]]; then
+        echo "iOS device libtdjson.dylib already exists, skipping build"
+        return
+    fi
+
+    rm -rf "$build_dir"
+    cmake \
+        -S "$TD_SOURCE_DIR" \
+        -B "$build_dir" \
+        -G "Unix Makefiles" \
+        -DCMAKE_MAKE_PROGRAM=/usr/bin/make \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DCMAKE_TOOLCHAIN_FILE="$TD_SOURCE_DIR/CMake/iOS.cmake" \
+        -DIOS_PLATFORM=OS \
+        -DIOS_ARCH=arm64 \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DOPENSSL_FOUND=1 \
+        -DOPENSSL_CRYPTO_LIBRARY="$openssl_dir/lib/libcrypto.a" \
+        -DOPENSSL_SSL_LIBRARY="$openssl_dir/lib/libssl.a" \
+        -DOPENSSL_INCLUDE_DIR="$openssl_dir/include" \
+        -DOPENSSL_LIBRARIES="$openssl_dir/lib/libcrypto.a;$openssl_dir/lib/libssl.a"
+    cmake --build "$build_dir" --target tdjson --parallel "$JOBS"
+
+    lib_path=$(find "$build_dir" -name libtdjson.dylib | head -n 1)
+    if [[ -z "$lib_path" ]]; then
+        echo "error: failed to locate iOS device libtdjson.dylib" >&2
+        exit 1
+    fi
+
+    rm -rf "$out_dir/libtdjson.dylib"
+    cp "$lib_path" "$out_dir/libtdjson.dylib"
+    install_name_tool -id @rpath/libtdjson.dylib "$out_dir/libtdjson.dylib"
+}
+
 build_android_target() {
     local openssl_src="$1"
     local host_tag="$2"
@@ -230,6 +307,13 @@ build_ios_simulator_target() {
     build_ios_simulator_openssl "$openssl_src"
     prepare_td_generated_sources
     build_ios_simulator_tdjson
+}
+
+build_ios_device_target() {
+    local openssl_src="$1"
+    build_ios_device_openssl "$openssl_src"
+    prepare_td_generated_sources
+    build_ios_device_tdjson
 }
 
 main() {
@@ -252,12 +336,16 @@ main() {
             ios-sim)
                 build_ios_simulator_target "$openssl_src"
                 ;;
+            ios)
+                build_ios_device_target "$openssl_src"
+                ;;
             all)
                 build_android_target "$openssl_src" "$host_tag"
                 build_ios_simulator_target "$openssl_src"
+                build_ios_device_target "$openssl_src"
                 ;;
             *)
-                echo "error: unsupported target '$target' (expected: android, ios-sim, all)" >&2
+                echo "error: unsupported target '$target' (expected: android, ios, ios-sim, all)" >&2
                 exit 1
                 ;;
         esac
