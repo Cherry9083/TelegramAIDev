@@ -8,10 +8,11 @@ A new keels project.
 
 ## ios
 测试：
+keels build ios
 ./build.sh debug ios autorun
 
-xcodebuild test \                                        
-  -project /Users/dzy/Desktop/project/TelegramAIDev/apps/cjmp/ios/cjmp.xcodeproj \
+xcodebuild test \
+  -project /Users/user/Desktop/project/TelegramAIDev/apps/cjmp/ios/cjmp.xcodeproj \
   -scheme cjmp \
   -destination "id=00008140-000408510A02801C" \
   -only-testing:cjmpUITests/CjmpUITests/testRunSmokeCheckFromUiTestPage \

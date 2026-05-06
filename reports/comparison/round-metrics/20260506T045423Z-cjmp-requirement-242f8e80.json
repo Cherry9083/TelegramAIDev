@@ -1,0 +1,84 @@
+{
+  "codex_session_file": "/Users/user/.codex/sessions/2026/05/06/rollout-2026-05-06T12-53-32-019dfba2-511f-7df3-a0c9-988ebb8a08b8.jsonl",
+  "codex_thread_id": "019dfba2-511f-7df3-a0c9-988ebb8a08b8",
+  "ended_at": "2026-05-06T05:58:53Z",
+  "framework_lane": "cjmp",
+  "round_id": "20260506T045423Z-cjmp-requirement-242f8e80",
+  "started_at": "2026-05-06T04:54:23Z",
+  "steps": [
+    {
+      "duration_sec": 2354,
+      "ended_at": "2026-05-06T05:34:14Z",
+      "name": "phase0-baseline",
+      "started_at": "2026-05-06T04:55:00Z"
+    },
+    {
+      "duration_sec": 331,
+      "ended_at": "2026-05-06T05:45:07Z",
+      "name": "phase0-android-validation",
+      "started_at": "2026-05-06T05:39:36Z"
+    },
+    {
+      "duration_sec": 245,
+      "ended_at": "2026-05-06T05:52:23Z",
+      "name": "phase0-ios-validation",
+      "started_at": "2026-05-06T05:48:18Z"
+    }
+  ],
+  "token_consumption": {
+    "cached_input_tokens": 14724352,
+    "input_tokens": 15486244,
+    "output_tokens": 118387,
+    "reasoning_output_tokens": 82630,
+    "total_tokens": 15604631
+  },
+  "token_usage_delta": {
+    "cached_input_tokens": 14724352,
+    "input_tokens": 15486244,
+    "output_tokens": 118387,
+    "reasoning_output_tokens": 82630,
+    "total_tokens": 15604631
+  },
+  "token_usage_end": {
+    "last": {
+      "cached_input_tokens": 301440,
+      "input_tokens": 306946,
+      "output_tokens": 1133,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 308079
+    },
+    "model_context_window": 950000,
+    "timestamp": "2026-05-06T05:58:41.325Z",
+    "total": {
+      "cached_input_tokens": 14747136,
+      "input_tokens": 15526638,
+      "output_tokens": 119540,
+      "reasoning_output_tokens": 83185,
+      "total_tokens": 15646178
+    }
+  },
+  "token_usage_source": "codex-session-jsonl",
+  "token_usage_start": {
+    "last": {
+      "cached_input_tokens": 18304,
+      "input_tokens": 21899,
+      "output_tokens": 694,
+      "reasoning_output_tokens": 346,
+      "total_tokens": 22593
+    },
+    "model_context_window": 950000,
+    "timestamp": "2026-05-06T04:54:05.569Z",
+    "total": {
+      "cached_input_tokens": 22784,
+      "input_tokens": 40394,
+      "output_tokens": 1153,
+      "reasoning_output_tokens": 555,
+      "total_tokens": 41547
+    }
+  },
+  "total_duration_sec": 3870,
+  "version": 1,
+  "work_item_ref": "phase-0-android-ios-hos-feasibility-spike",
+  "work_item_type": "requirement",
+  "working_effort_summary": "completed phase 0 TDLib feasibility spike with Android and iOS tdjson artifact builds, Android app runtime proof, iOS app packaging proof, and HOS high-risk feasibility conclusion"
+}

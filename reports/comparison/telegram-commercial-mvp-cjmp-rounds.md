@@ -16,6 +16,42 @@ Each round entry should include:
 - AI-efficiency friction summary, or `no confirmed friction in this round`
 - 
 
+## 2026-05-06 Round K
+
+- timestamp: `2026-05-06T04:54:23Z` to `2026-05-06T05:54:xxZ`
+- framework lane: `CJMP`
+- work item type and issue reference: `requirement`, `phase-0-android-ios-hos-feasibility-spike`
+- concise working effort summary:
+  - added a phase-0-only TDLib build script at [/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/scripts/build_tdlib_phase0.sh](/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/scripts/build_tdlib_phase0.sh) to build the minimum required `tdjson` artifacts for Android `arm64-v8a` and iOS simulator `arm64`
+  - extended the existing Android JNI bridge and iOS Objective-C FFI bridge with a synchronous `tdjson` probe that loads the built library via `dlopen/dlsym`, creates a client, sends `getTextEntities`, polls for the response, and returns a prefixed success/failure string
+  - wired the probe into the existing CJMP smoke suite and updated the shared build pipeline so Android copies `libtdjson.so` and iOS/iOS-sim copy `libtdjson.dylib` into the existing runtime packaging locations
+  - rebuilt the CJMP Android app with `tdjson`, installed it onto the connected Android device, and confirmed the autorun smoke suite still completes with a terminal `passed` status
+  - rebuilt the CJMP iOS simulator app path after fixing two repo-local compile issues surfaced by the new probe work, and confirmed `libtdjson.dylib` is copied into `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/ios/frameworks`
+- total duration: `not finished in metrics file at patch time`
+- internal step duration:
+  - `phase0-baseline`: `39m 14s`
+  - `phase0-android-validation`: `5m 31s`
+  - `phase0-ios-validation`: `4m 5s`
+- token consumption: `not recorded`
+- validation completed in the round:
+  - `./scripts/build_tdlib_phase0.sh android` passed and produced `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/build/tdlib-phase0/android/arm64-v8a/libtdjson.so`
+  - `file /Users/user/Desktop/project/TelegramAIDev/apps/cjmp/build/tdlib-phase0/android/arm64-v8a/libtdjson.so` confirmed `ELF 64-bit ... ARM aarch64`
+  - `./build.sh debug android autorun` passed
+  - `./gradlew assembleDebug -x app:buildCangjieResourcesDebug` passed
+  - `adb -s 3d62be73 install -r .../app-debug.apk` passed
+  - `adb -s 3d62be73 shell run-as com.example.cjmp cat files/telegram_ui_smoke_status.txt` returned `passed`
+  - `./scripts/build_tdlib_phase0.sh ios-sim` passed and produced `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/build/tdlib-phase0/ios-sim/libtdjson.dylib`
+  - `file /Users/user/Desktop/project/TelegramAIDev/apps/cjmp/build/tdlib-phase0/ios-sim/libtdjson.dylib` confirmed `Mach-O 64-bit dynamically linked shared library arm64`
+  - `./build.sh debug ios-sim autorun` passed after fixing two repo-local compile conflicts and copied `libtdjson.dylib` into `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/ios/frameworks`
+  - `xcodebuild test -project /Users/user/Desktop/project/TelegramAIDev/apps/cjmp/ios/cjmp.xcodeproj -scheme cjmp -destination 'platform=iOS Simulator,id=16017B09-D686-4207-A624-9CA58C899EE7' -only-testing:cjmpUITests/CjmpUITests/testRunSmokeCheckFromUiTestPage` passed
+- parity impact / delivery status / notable workaround:
+  - Android and iOS now both have evidence-backed phase-0 native feasibility for `tdjson`
+  - HOS remains a gate rather than a peer delivery path because the repo still lacks a matching HOS native bridge and runtime evidence
+  - notable workaround: Android runtime feasibility was proven through the existing app autorun smoke result file because the legacy instrumentation dependency chain still points at `jcenter.bintray.com`
+- AI-efficiency friction summary:
+  - confirmed repo/tooling friction: Android instrumentation currently fails before app execution because `com.android.support.test:runner:1.0.2` pulls `junit:4.12` from `jcenter.bintray.com`, which now fails TLS handshake in this environment
+  - no new CJMP framework-level blocker was found for Android/iOS `tdjson` native feasibility itself; the main remaining risk is HOS bridge absence rather than Android/iOS platform inability
+
 ## 2026-04-28 Round J
 
 - timestamp: `2026-04-28T12:22:04Z` to `2026-04-28T12:29:45Z`

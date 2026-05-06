@@ -7,6 +7,7 @@ extern "C" {
 
 const char* FfiLogicTest(void);
 void FfiFreeString(const char* str);
+const char* FfiRunTdjsonPhase0Probe(void);
 long long FfiSaveDemoSessionPhone(const char* phoneNumber);
 const char* FfiLoadDemoSessionPhone(void);
 void FfiClearDemoSessionPhone(void);

@@ -63,14 +63,14 @@ func startSmokeSuiteOnCurrentPlatform(page: UITestPage): Unit {
 func startSmokeSuiteOnCurrentPlatform(page: UITestPage): Unit {
     let _ = spawn {
         let report = TelegramSlice6SmokeSuite().asTestSuite().runTests()
-        page.smokeDetail = getSmokeTrace()
-        if (report.failedCount == 0 && report.errorCount == 0) {
-            page.smokeStatus = SMOKE_PASSED
+        let detail = getSmokeTrace()
+        let status = if (report.failedCount == 0 && report.errorCount == 0) {
+            SMOKE_PASSED
         } else {
-            page.smokeStatus = SMOKE_FAILED
+            SMOKE_FAILED
         }
-        updateSmokeSuiteSnapshots(page.smokeStatus, page.smokeDetail)
-        AppLog.info("telegram ui smoke report: case=${report.caseCount} failed=${report.failedCount} error=${report.errorCount} detail=${page.smokeDetail}")
+        page.applySmokeCompletion(status, detail)
+        AppLog.info("telegram ui smoke report: case=${report.caseCount} failed=${report.failedCount} error=${report.errorCount} detail=${detail}")
     }
 }
 
@@ -136,6 +136,12 @@ class UITestPage {
     func syncSmokeStateFromSnapshots(): Unit {
         this.smokeStatus = getSmokeSuiteStatusSnapshot()
         this.smokeDetail = getSmokeSuiteDetailSnapshot()
+    }
+
+    func applySmokeCompletion(status: String, detail: String): Unit {
+        this.smokeStatus = status
+        this.smokeDetail = detail
+        updateSmokeSuiteSnapshots(status, detail)
     }
 
     func build() {

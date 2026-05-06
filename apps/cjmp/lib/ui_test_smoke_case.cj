@@ -175,6 +175,15 @@ func logContactsSurfaceSnapshot(driver: Driver, stage: String): Unit {
 @Test
 public class TelegramSlice6SmokeSuite {
     @TestCase
+    func test_phase0_tdjson_native_probe(): Unit {
+        logSmokeCheck(">>> test_phase0_tdjson_native_probe STARTED <<<")
+        let result = runTdjsonPhase0Probe()
+        logSmokeCheck("TDLib phase0 probe result: ${result}")
+        assertSmoke(isTdjsonPhase0ProbeSuccess(result), "TDLib phase0 native probe should succeed: ${result}")
+        logSmokeCheck(">>> test_phase0_tdjson_native_probe COMPLETED <<<")
+    }
+
+    @TestCase
     func test_slice4_contacts_and_settings_surfaces(): Unit {
         let driver = Driver.create()
         try {

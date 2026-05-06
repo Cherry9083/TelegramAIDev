@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "skills": {
+    "cangjie-lang-features": {
+      "source": "Cangjie-SIG/CangjieSkills",
+      "sourceType": "git",
+      "skillPath": ".agents/skills/cangjie-lang-features/SKILL.md",
+      "computedHash": "09b71f9cb3596d5be49e9264cdb0ba2562a585c6ef11876196c1c5f3d13a5303"
+    },
+    "cangjie-original-docs": {
+      "source": "Cangjie-SIG/CangjieSkills",
+      "sourceType": "git",
+      "skillPath": ".agents/skills/cangjie-original-docs/SKILL.md",
+      "computedHash": "c17efd052baf486530c9ea2935323647c7236e83076a27f0fe5606ab13ac9967"
+    },
+    "cangjie-regulations": {
+      "source": "Cangjie-SIG/CangjieSkills",
+      "sourceType": "git",
+      "skillPath": ".agents/skills/cangjie-regulations/SKILL.md",
+      "computedHash": "d302ca344b1946e7161f9c9fb960c8008a0f35af2a8dbe32417006bdb568870b"
+    },
+    "cangjie-std": {
+      "source": "Cangjie-SIG/CangjieSkills",
+      "sourceType": "git",
+      "skillPath": ".agents/skills/cangjie-std/SKILL.md",
+      "computedHash": "cd30a92e1505cd693645926a27aa2eaec77a28a9b0e7a8cc4d04abb3ba30dcaf"
+    },
+    "cangjie-stdx": {
+      "source": "Cangjie-SIG/CangjieSkills",
+      "sourceType": "git",
+      "skillPath": ".agents/skills/cangjie-stdx/SKILL.md",
+      "computedHash": "f5f08cb8b7091e5a33d8bbd71b30e2a8377d822c080330232ab0096b269f19fa"
+    },
+    "cangjie-toolchains": {
+      "source": "Cangjie-SIG/CangjieSkills",
+      "sourceType": "git",
+      "skillPath": ".agents/skills/cangjie-toolchains/SKILL.md",
+      "computedHash": "ca6e2562418d525f9c03947e882a5d332003e251d895702d4a0a62ac080cc21b"
+    }
+  }
+}

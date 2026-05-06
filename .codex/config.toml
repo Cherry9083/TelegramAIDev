@@ -1,35 +1,43 @@
-#:schema https://developers.openai.com/codex/config-schema.json
-
 profile = "android_acceptance_min"
 
 [agents]
-max_threads = 6
 max_depth = 1
+max_threads = 6
 
-[profiles.android_acceptance_min]
-# First-choice profile for Android acceptance: keep the repo config portable and
-# keep acceptance interaction inside normal sandboxed adb usage. Add
-# machine-specific Android directories with `codex --add-dir` or in user-level
-# `~/.codex/config.toml`, not in this shared repo config.
-sandbox_mode = "workspace-write"
-approval_policy = "never"
+[mcp_servers.cangjie-docs]
+args = []
+command = "/Users/dzy/Desktop/project/TelegramAIDev/cangje-docs-mcp-macos-arm64"
+required = false
+startup_timeout_sec = 20
 
-[profiles.android_acceptance_min.sandbox_workspace_write]
-network_access = true
+[mcp_servers.context7]
+args = [
+    "-y",
+    "@upstash/context7-mcp",
+]
+command = "npx"
+startup_timeout_sec = 20
+
+[mcp_servers.context7.env]
+CONTEXT7_API_KEY = "ctx7sk-f02562b2-e220-4bc2-a608-949f1e80a90a"
 
 [mcp_servers.dart]
+args = [
+    "mcp-server",
+    "--force-roots-fallback",
+]
 command = "dart"
-args = ["mcp-server", "--force-roots-fallback"]
 required = false
 startup_timeout_sec = 20
 
 [mcp_servers.figma]
+required = false
+startup_timeout_sec = 20
 url = "https://mcp.figma.com/mcp"
-required = false
-startup_timeout_sec = 20
 
-[mcp_servers."cangjie-docs"]
-command = "/Users/dzy/Desktop/project/TelegramAIDev/cangje-docs-mcp-macos-arm64"
-args = []
-required = false
-startup_timeout_sec = 20
+[profiles.android_acceptance_min]
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+
+[profiles.android_acceptance_min.sandbox_workspace_write]
+network_access = true

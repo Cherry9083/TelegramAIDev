@@ -226,7 +226,19 @@ copy_dependencies() {
     rm -f "$dep_file" || true
 }
 
+copy_optional_file() {
+    local input_file="$1"
+    local output_dir="$2"
+    if [[ -f "$input_file" ]]; then
+        echo "copy optional artifact: $(basename "$input_file")"
+        cp -f "$input_file" "$output_dir/"
+    else
+        echo "optional artifact missing: $input_file"
+    fi
+}
+
 inputDir="${build_path}/${cangjieTarget}/${buildType}/ohos_app_cangjie_entry"
+tdlibPhase0Root="${build_path}/tdlib-phase0"
 if [[ "${buildTarget}" == "android" ]]; then
     # output: dependency storage path
     outputDir="${SCRIPT_DIR}/android/app/libs"
@@ -243,6 +255,8 @@ if [[ "${buildTarget}" == "android" ]]; then
     copy_libs "$inputDir" "$outputDir/arm64-v8a" "so" "cjo" # libohos_app_cangjie_entry.so; ohos_app_cangjie_entry.cjo
     # jnicjmp is packaged from the Gradle/CMake output; copying it here causes duplicate native libs.
     cp "${lib_share_path}" "$outputDir/arm64-v8a" #libc++_shared.so
+    copy_optional_file "${tdlibPhase0Root}/android/arm64-v8a/libtdjson.so" "$outputDir/arm64-v8a"
+    copy_optional_file "${tdlibPhase0Root}/android/arm64-v8a/libc++_shared.so" "$outputDir/arm64-v8a"
 
     # copy: library dependencies
     dep_file="$(analyze_dependencies "$outputDir/arm64-v8a" "android" "$ANDROID_CANGJIE_PATH" "$ANDROID_CJ_FRONTEND" "$ANDROID_CANGJIE_STDX_PATH" "$ANDROID_CJMP_LIBS_PATH" "$ANDROID_TEST_PATH")"
@@ -263,6 +277,7 @@ elif [[ "${buildTarget}" == "ios" ]]; then
     copy_libs "$inputDir" "$frameworksDir" "dylib" # libohos_app_cangjie_entry.dylib
     copy_libs "$IOS_BRIDGE" "$frameworksDir" "dylib" # libjnicjmp.dylib
     cp -r "$IOS_ENGINE_PATH" "$frameworksDir" # libkeels_ios.framework
+    copy_optional_file "${tdlibPhase0Root}/ios/libtdjson.dylib" "$frameworksDir"
 
     # copy: library dependencies
     dep_file="$(analyze_dependencies "$frameworksDir" "ios" "$IOS_CANGJIE_PATH" "$IOS_CJ_FRONTEND" "$IOS_CANGJIE_STDX_PATH" "$IOS_CJMP_LIBS_PATH" "$IOS_TEST_PATH")"
@@ -282,6 +297,7 @@ elif [[ "${buildTarget}" == "ios-sim" ]]; then
     copy_libs "$inputDir" "$frameworksDir" "dylib" # libohos_app_cangjie_entry.dylib
     copy_libs "$IOS_BRIDGE" "$frameworksDir" "dylib" # libjnicjmp.dylib
     cp -r "$IOS_SIM_ENGINE_PATH" "$frameworksDir" # libkeels_ios.framework
+    copy_optional_file "${tdlibPhase0Root}/ios-sim/libtdjson.dylib" "$frameworksDir"
 
     # copy: library dependencies
     dep_file="$(analyze_dependencies "$frameworksDir" "ios" "$IOS_SIM_CANGJIE_PATH" "$IOS_SIM_CJ_FRONTEND" "$IOS_SIM_CANGJIE_STDX_PATH" "$IOS_SIM_CJMP_LIBS_PATH" "$IOS_SIM_TEST_PATH")"
