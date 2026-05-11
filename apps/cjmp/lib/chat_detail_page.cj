@@ -5,7 +5,10 @@ import ohos.router.Router
 import ohos.state_macro_manage.Entry
 import ohos.state_macro_manage.Component
 import ohos.state_macro_manage.State
+import std.collection.ArrayList
+import std.convert.*
 import std.time.*
+import std.unicode.*
 
 let CHAT_DETAIL_TITLE_FALLBACK = "Conversation"
 let CHAT_DETAIL_SUBTITLE_FALLBACK = "last seen recently"
@@ -41,9 +44,14 @@ class ChatDetailPage {
     var secondLocalMessageText: String = ""
     @State
     var secondLocalMessageDelivery: String = ""
+    @State
+    var telegramSendVersion: Int64 = 0
+    @State
+    var telegramMessagesVersion: Int64 = 0
 
     var messageScroller: ListScroller = ListScroller()
     private var didResolveConversation: Bool = false
+    private var didStartRealMessageSync: Bool = false
 
     protected override func aboutToAppear(): Unit {
         if (this.didResolveConversation) {
@@ -51,6 +59,12 @@ class ChatDetailPage {
         }
         this.didResolveConversation = true
         this.conversationId = this.resolveConversationId()
+        let chatId = this.realChatId()
+        if (chatId != 0) {
+            requestTelegramChatHistoryIfNeeded(chatId)
+            this.telegramMessagesVersion = telegramChatMessagesVersion()
+            this.startRealMessageSyncIfNeeded()
+        }
     }
 
     func resolveConversationId(): String {
@@ -61,6 +75,13 @@ class ChatDetailPage {
     }
 
     func currentTitle(): String {
+        let chatId = this.realChatId()
+        if (chatId != 0) {
+            match (telegramChatRowById(chatId)) {
+                case Some(row) => return row.title
+                case None => return "Telegram chat"
+            }
+        }
         if (this.conversationId == CHAT_DETAIL_CONVERSATION_ALEX) {
             return "Alex Mason"
         } else if (this.conversationId == CHAT_DETAIL_CONVERSATION_DESIGN) {
@@ -72,6 +93,13 @@ class ChatDetailPage {
     }
 
     func currentSubtitle(): String {
+        let chatId = this.realChatId()
+        if (chatId != 0) {
+            if (chatId == telegramSettingsSelfChatId()) {
+                return "Saved Messages"
+            }
+            return "Real Telegram conversation"
+        }
         if (this.conversationId == CHAT_DETAIL_CONVERSATION_ALEX) {
             return CHAT_DETAIL_SUBTITLE_ALEX
         } else if (this.conversationId == CHAT_DETAIL_CONVERSATION_DESIGN) {
@@ -80,6 +108,21 @@ class ChatDetailPage {
             return CHAT_DETAIL_SUBTITLE_OPS
         }
         return CHAT_DETAIL_SUBTITLE_FALLBACK
+    }
+
+    func realChatId(): Int64 {
+        if (!this.conversationId.startsWith("tdchat:")) {
+            return 0
+        }
+        try {
+            return Int64.parse(this.conversationId.removePrefix("tdchat:"))
+        } catch (_: Exception) {
+            return 0
+        }
+    }
+
+    func isRealChatDetail(): Bool {
+        return this.realChatId() != 0
     }
 
     func updateComposerText(value: String): Unit {
@@ -92,6 +135,9 @@ class ChatDetailPage {
     func deliveryColor(deliveryLabel: String): Int64 {
         if (deliveryLabel == CHAT_DETAIL_DELIVERY_PENDING) {
             return COLOR_TEXT_MUTED
+        }
+        if (deliveryLabel == TELEGRAM_SEND_STATE_ERROR) {
+            return COLOR_STATUS_ERROR
         }
         return COLOR_BRAND
     }
@@ -191,6 +237,84 @@ class ChatDetailPage {
             sleep(900 * Duration.millisecond)
             this.settleLocalMessage(pendingSlot, CHAT_DETAIL_DELIVERY_SENT)
         }
+    }
+
+    func submitTelegramMessage(): Unit {
+        if (!this.isComposerReady()) {
+            return
+        }
+        let draft = this.composerText.trim()
+        if (draft.isEmpty()) {
+            return
+        }
+        let chatId = preferredTelegramSendChatId(this.realChatId())
+        this.composerText = ""
+        this.composerNotice = ""
+        if (!sendTelegramTextMessage(chatId, draft)) {
+            this.composerNotice = telegramMessageSendNotice()
+            this.telegramSendVersion = telegramMessageSendVersion()
+            return
+        }
+        let initialSendVersion = telegramMessageSendVersion()
+        let _ = spawn {
+            var waitCount: Int64 = 0
+            while (waitCount < 80 && initialSendVersion == telegramMessageSendVersion()) {
+                sleep(250 * Duration.millisecond)
+                waitCount++
+            }
+            this.telegramSendVersion = telegramMessageSendVersion()
+            if (telegramMessageSendNotice().isEmpty()) {
+                if (waitCount >= 80) {
+                    this.composerNotice = "Telegram did not confirm the message before timeout."
+                }
+            } else {
+                this.composerNotice = telegramMessageSendNotice()
+            }
+        }
+    }
+
+    func submitComposerMessage(): Unit {
+        if (this.isRealChatDetail()) {
+            this.submitTelegramMessage()
+            return
+        }
+        this.submitLocalMessage()
+    }
+
+    func startRealMessageSyncIfNeeded(): Unit {
+        if (this.didStartRealMessageSync) {
+            return
+        }
+        this.didStartRealMessageSync = true
+        let _ = spawn {
+            while (this.isRealChatDetail()) {
+                sleep(500 * Duration.millisecond)
+                if (this.telegramMessagesVersion != telegramChatMessagesVersion()) {
+                    this.telegramMessagesVersion = telegramChatMessagesVersion()
+                }
+            }
+        }
+    }
+
+    func realMessageKindForRender(version: Int64): String {
+        if (version < 0) {
+            return TELEGRAM_CHAT_MESSAGES_KIND_IDLE
+        }
+        return telegramChatMessagesKind(this.realChatId())
+    }
+
+    func realMessageNoticeForRender(version: Int64): String {
+        if (version < 0) {
+            return ""
+        }
+        return telegramChatMessagesNotice(this.realChatId())
+    }
+
+    func realMessageRowsForRender(version: Int64): ArrayList<TelegramChatMessageRow> {
+        if (version < 0) {
+            return ArrayList<TelegramChatMessageRow>()
+        }
+        return telegramChatMessagesRows(this.realChatId())
     }
 
     func build() {
@@ -421,6 +545,75 @@ class ChatDetailPage {
                         .justifyContent(FlexAlign.End)
                     }
                 }
+
+                if (this.isRealChatDetail() &&
+                    this.realMessageKindForRender(this.telegramMessagesVersion) == TELEGRAM_CHAT_MESSAGES_KIND_LOADING) {
+                    ListItem() {
+                        Row() {
+                            Text("Loading Telegram messages...")
+                                .fontSize(12)
+                                .fontColor(COLOR_TEXT_MUTED)
+                        }
+                        .width(100.percent)
+                        .justifyContent(FlexAlign.Center)
+                    }
+                }
+
+                if (this.isRealChatDetail() &&
+                    this.realMessageKindForRender(this.telegramMessagesVersion) == TELEGRAM_CHAT_MESSAGES_KIND_ERROR) {
+                    ListItem() {
+                        Row() {
+                            Text(this.realMessageNoticeForRender(this.telegramMessagesVersion))
+                                .fontSize(12)
+                                .fontColor(COLOR_STATUS_ERROR)
+                                .width(80.percent)
+                                .textAlign(TextAlign.Center)
+                        }
+                        .width(100.percent)
+                        .justifyContent(FlexAlign.Center)
+                    }
+                }
+
+                if (this.isRealChatDetail()) {
+                    ForEach(
+                        this.realMessageRowsForRender(this.telegramMessagesVersion),
+                        itemGeneratorFunc: { row: TelegramChatMessageRow, _: Int64 =>
+                            ListItem() {
+                                Row() {
+                                    Column(6) {
+                                        Text(row.text)
+                                            .id(ID_CHAT_DETAIL_REAL_MESSAGE_TEXT)
+                                            .fontSize(15)
+                                            .fontColor(COLOR_TEXT_PRIMARY)
+                                            .width(100.percent)
+
+                                        Row(8) {
+                                            Text(row.timeLabel)
+                                                .fontSize(11)
+                                                .fontColor(COLOR_TEXT_MUTED)
+
+                                            if (row.isOutgoing) {
+                                                Text(row.deliveryLabel)
+                                                    .id(ID_CHAT_DETAIL_REAL_MESSAGE_DELIVERY)
+                                                    .fontSize(11)
+                                                    .fontColor(this.deliveryColor(row.deliveryLabel))
+                                                    .fontWeight(FontWeight.Medium)
+                                            }
+                                        }
+                                    }
+                                    .alignItems(if (row.isOutgoing) { HorizontalAlign.End } else { HorizontalAlign.Start })
+                                    .width(76.percent)
+                                    .padding(left: 16, right: 16, top: 14, bottom: 14)
+                                    .backgroundColor(if (row.isOutgoing) { COLOR_BRAND_SOFT } else { COLOR_SURFACE })
+                                    .borderRadius(20)
+                                }
+                                .width(100.percent)
+                                .justifyContent(if (row.isOutgoing) { FlexAlign.End } else { FlexAlign.Start })
+                            }
+                        },
+                        keyGeneratorFunc: { row: TelegramChatMessageRow, _: Int64 => "${row.chatId}-${row.messageId}" }
+                    )
+                }
             }
             .id(ID_CHAT_DETAIL_MESSAGE_LIST)
             .listDirection(Axis.Vertical)
@@ -471,7 +664,7 @@ class ChatDetailPage {
                         .borderRadius(23)
                         .padding(left: 16, right: 16)
                         .onClick({ =>
-                            this.submitLocalMessage()
+                            this.submitComposerMessage()
                         })
                 }
             }

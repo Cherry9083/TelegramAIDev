@@ -15,6 +15,7 @@ fi
 
 # Script directory
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+export TDLIB_PHASE0_ROOT="${TDLIB_PHASE0_ROOT:-$SCRIPT_DIR/.cache/tdlib-phase0}"
 
 # Base paths
 CJMP_UI_PATH="$CJMP_SDK_HOME/cjmp-ui"
@@ -72,16 +73,19 @@ elif [[ "${buildTarget}" == "ios-sim" ]]; then
     export IOS_BRIDGE="$SCRIPT_DIR/ios/oc_bridge"
 fi
 
-if [[ "${buildTarget}" == "ios" ]] || [[ "${buildTarget}" == "ios-sim" ]]; then
-    # Build TDLib for iOS
+if [[ "${buildTarget}" == "android" ]] || [[ "${buildTarget}" == "ios" ]] || [[ "${buildTarget}" == "ios-sim" ]]; then
+    # Build TDLib before packaging native artifacts.
     echo "Building TDLib for ${buildTarget}..."
     tdlib_build_script="$SCRIPT_DIR/scripts/build_tdlib_phase0.sh"
     if [[ -f "$tdlib_build_script" ]]; then
         bash "$tdlib_build_script" "${buildTarget}"
     else
-        echo "Warning: TDLib build script not found at $tdlib_build_script, skipping TDLib build"
+        echo "error: TDLib build script not found at $tdlib_build_script" >&2
+        exit 1
     fi
+fi
 
+if [[ "${buildTarget}" == "ios" ]] || [[ "${buildTarget}" == "ios-sim" ]]; then
     # compile oc_bridge code
     oc_bridge_dir="$SCRIPT_DIR/ios/oc_bridge"
     echo "Compiling Objective-C code in $oc_bridge_dir"
@@ -246,8 +250,19 @@ copy_optional_file() {
     fi
 }
 
+copy_required_file() {
+    local input_file="$1"
+    local output_dir="$2"
+    if [[ ! -f "$input_file" ]]; then
+        echo "error: required artifact missing: $input_file" >&2
+        exit 1
+    fi
+    echo "copy required artifact: $(basename "$input_file")"
+    cp -f "$input_file" "$output_dir/"
+}
+
 inputDir="${build_path}/${cangjieTarget}/${buildType}/ohos_app_cangjie_entry"
-tdlibPhase0Root="${build_path}/tdlib-phase0"
+tdlibPhase0Root="${TDLIB_PHASE0_ROOT}"
 if [[ "${buildTarget}" == "android" ]]; then
     # output: dependency storage path
     outputDir="${SCRIPT_DIR}/android/app/libs"
@@ -264,7 +279,7 @@ if [[ "${buildTarget}" == "android" ]]; then
     copy_libs "$inputDir" "$outputDir/arm64-v8a" "so" "cjo" # libohos_app_cangjie_entry.so; ohos_app_cangjie_entry.cjo
     # jnicjmp is packaged from the Gradle/CMake output; copying it here causes duplicate native libs.
     cp "${lib_share_path}" "$outputDir/arm64-v8a" #libc++_shared.so
-    copy_optional_file "${tdlibPhase0Root}/android/arm64-v8a/libtdjson.so" "$outputDir/arm64-v8a"
+    copy_required_file "${tdlibPhase0Root}/android/arm64-v8a/libtdjson.so" "$outputDir/arm64-v8a"
     copy_optional_file "${tdlibPhase0Root}/android/arm64-v8a/libc++_shared.so" "$outputDir/arm64-v8a"
 
     # copy: library dependencies
@@ -286,7 +301,7 @@ elif [[ "${buildTarget}" == "ios" ]]; then
     copy_libs "$inputDir" "$frameworksDir" "dylib" # libohos_app_cangjie_entry.dylib
     copy_libs "$IOS_BRIDGE" "$frameworksDir" "dylib" # libjnicjmp.dylib
     cp -r "$IOS_ENGINE_PATH" "$frameworksDir" # libkeels_ios.framework
-    copy_optional_file "${tdlibPhase0Root}/ios/libtdjson.dylib" "$frameworksDir"
+    copy_required_file "${tdlibPhase0Root}/ios/libtdjson.dylib" "$frameworksDir"
 
     # copy: library dependencies
     dep_file="$(analyze_dependencies "$frameworksDir" "ios" "$IOS_CANGJIE_PATH" "$IOS_CJ_FRONTEND" "$IOS_CANGJIE_STDX_PATH" "$IOS_CJMP_LIBS_PATH" "$IOS_TEST_PATH")"

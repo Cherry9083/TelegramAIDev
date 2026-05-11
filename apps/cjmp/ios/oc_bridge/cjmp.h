@@ -11,6 +11,12 @@ NS_ASSUME_NONNULL_BEGIN
 + (BOOL)saveDemoSessionPhone:(NSString *)phoneNumber;
 + (NSString *)loadDemoSessionPhone;
 + (void)clearDemoSessionPhone;
++ (BOOL)saveTelegramRuntimeConfig:(NSString *)configJson;
++ (NSString *)loadTelegramRuntimeConfig;
++ (void)clearTelegramRuntimeConfig;
++ (BOOL)saveTelegramSessionKey:(NSString *)sessionKey;
++ (NSString *)loadTelegramSessionKey;
++ (void)clearTelegramSessionKey;
 
 @end
 

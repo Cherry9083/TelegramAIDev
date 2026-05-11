@@ -23,14 +23,18 @@ keels run
 
 ## android
 测试
-./build.sh debug android autorun
+bash build.sh debug android off
 cd android
 ./gradlew assembleDebug -x app:buildCangjieResourcesDebug
 
 adb devices
+
+不同设备启动
 adb -s 3d62be73 install -r app/build/outputs/apk/debug/app-debug.apk
 adb -s 3d62be73 shell am start -n com.example.cjmp/.EntryEntryAbilityActivity
 
+adb -s 23E0223B28002653 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s 23E0223B28002653 shell am start -n com.example.cjmp/.EntryEntryAbilityActivity
 产品：
 keels build apk
 keels run

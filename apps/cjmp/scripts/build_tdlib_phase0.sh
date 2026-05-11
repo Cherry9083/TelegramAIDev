@@ -5,10 +5,19 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 APP_DIR=$(cd "$SCRIPT_DIR/.." && pwd -P)
 REPO_DIR=$(cd "$APP_DIR/../.." && pwd -P)
 TD_SOURCE_DIR="$REPO_DIR/third_party/td"
-BUILD_ROOT="$APP_DIR/build/tdlib-phase0"
+LOCAL_OPENSSL_REPO_DIR="${LOCAL_OPENSSL_REPO_DIR:-$REPO_DIR/third_party/openssl_for_ios_and_android}"
+BUILD_ROOT="${TDLIB_PHASE0_ROOT:-$APP_DIR/.cache/tdlib-phase0}"
 WORK_ROOT="$BUILD_ROOT/work"
 ARTIFACT_ROOT="$BUILD_ROOT"
+ANDROID_OPENSSL_ROOT_FOR_TDLIB=""
+IOS_OPENSSL_ROOT_FOR_TDLIB=""
 OPENSSL_VERSION="${OPENSSL_VERSION:-OpenSSL_1_1_1w}"
+OPENSSL_SOURCE_VERSION="${OPENSSL_SOURCE_VERSION:-1.1.1w}"
+OPENSSL_SOURCE_DIR="${OPENSSL_SOURCE_DIR:-}"
+OPENSSL_ANDROID_ROOT="${OPENSSL_ANDROID_ROOT:-}"
+OPENSSL_IOS_ROOT="${OPENSSL_IOS_ROOT:-}"
+ALLOW_GITHUB_OPENSSL_FETCH="${ALLOW_GITHUB_OPENSSL_FETCH:-0}"
+CJMP_THIRD_PARTY_OPENSSL_DIR="${CJMP_THIRD_PARTY_OPENSSL_DIR:-${CJMP_SDK_HOME:-}/cjmp-tools/third_party/openssl}"
 ANDROID_NDK_VERSION="${ANDROID_NDK_VERSION:-26.3.11579264}"
 ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}"
 ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION"
@@ -59,6 +68,8 @@ prepare_common_environment() {
     require_tool php
     require_tool perl
     require_tool make
+    require_tool tar
+    require_tool curl
     require_tool git
     require_tool java
     require_tool javadoc
@@ -66,15 +77,294 @@ prepare_common_environment() {
     mkdir -p "$WORK_ROOT"
 }
 
+normalize_android_openssl_artifacts() {
+    local stable_root="$LOCAL_OPENSSL_REPO_DIR/output/android/openssl-arm64-v8a"
+    local example_root="$LOCAL_OPENSSL_REPO_DIR/example/android/demo2/test_curl_with_ssl_and_http2_android/app/src/main/cpp/test"
+    local example_lib_dir="$example_root/lib/arm64-v8a"
+    local example_include_dir="$example_root/include"
+
+    if is_android_openssl_root "$stable_root"; then
+        return
+    fi
+
+    if [[ -f "$example_lib_dir/libcrypto.a" && -f "$example_lib_dir/libssl.a" && -d "$example_include_dir/openssl" ]]; then
+        echo "Staging Android OpenSSL artifacts from $example_root to $stable_root"
+        mkdir -p "$stable_root/lib" "$stable_root/include"
+        cp "$example_lib_dir/libcrypto.a" "$example_lib_dir/libssl.a" "$stable_root/lib/"
+        cp -R "$example_include_dir/openssl" "$stable_root/include/"
+    fi
+}
+
+normalize_ios_device_openssl_artifacts() {
+    local stable_root="$LOCAL_OPENSSL_REPO_DIR/output/ios/openssl-arm64"
+    local example_root="$LOCAL_OPENSSL_REPO_DIR/example/ios/demo2/test_curl_with_ssl_and_http2_ios/test"
+    local example_lib_dir="$example_root/lib"
+    local example_include_dir="$example_root/include"
+
+    if is_ios_device_openssl_root "$stable_root"; then
+        return
+    fi
+
+    if [[ -f "$example_lib_dir/libcrypto-universal.a" && -f "$example_lib_dir/libssl-universal.a" && -d "$example_include_dir/openssl" ]]; then
+        echo "Staging iOS OpenSSL artifacts from $example_root to $stable_root"
+        mkdir -p "$stable_root/lib" "$stable_root/include"
+        lipo "$example_lib_dir/libcrypto-universal.a" -thin arm64 -output "$stable_root/lib/libcrypto.a"
+        lipo "$example_lib_dir/libssl-universal.a" -thin arm64 -output "$stable_root/lib/libssl.a"
+        cp -R "$example_include_dir/openssl" "$stable_root/include/"
+    fi
+}
+
 fetch_openssl_source() {
     local src_dir="$WORK_ROOT/openssl-src"
-    if [[ -d "$src_dir/.git" ]]; then
+    local archive="$WORK_ROOT/openssl-${OPENSSL_SOURCE_VERSION}.tar.gz"
+    local unpack_root="$WORK_ROOT/openssl-unpack"
+    local unpacked_dir
+    local urls=(
+        "https://distfiles.macports.org/openssl11/openssl-${OPENSSL_SOURCE_VERSION}.tar.gz"
+        "https://www.openssl.org/source/openssl-${OPENSSL_SOURCE_VERSION}.tar.gz"
+        "https://www.openssl.org/source/old/1.1.1/openssl-${OPENSSL_SOURCE_VERSION}.tar.gz"
+    )
+    local url
+
+    if [[ -f "$src_dir/Configure" ]]; then
         echo "$src_dir"
         return
     fi
+
+    if [[ -n "$OPENSSL_SOURCE_DIR" && -f "$OPENSSL_SOURCE_DIR/Configure" ]]; then
+        echo "$OPENSSL_SOURCE_DIR"
+        return
+    fi
+
+    if [[ -n "${CJMP_SDK_HOME:-}" && -f "$CJMP_THIRD_PARTY_OPENSSL_DIR/Configure" ]]; then
+        echo "$CJMP_THIRD_PARTY_OPENSSL_DIR"
+        return
+    fi
+
+    if [[ -n "${CJMP_SDK_HOME:-}" && ! -f "$CJMP_THIRD_PARTY_OPENSSL_DIR/Configure" ]]; then
+        echo "No OpenSSL source tree found under $CJMP_THIRD_PARTY_OPENSSL_DIR; downloading source for TDLib." >&2
+    fi
+
     rm -rf "$src_dir"
-    git clone --depth 1 --branch "$OPENSSL_VERSION" https://github.com/openssl/openssl.git "$src_dir"
-    echo "$src_dir"
+    rm -rf "$unpack_root"
+    mkdir -p "$unpack_root"
+
+    if [[ "$ALLOW_GITHUB_OPENSSL_FETCH" == "1" ]]; then
+        urls+=("https://github.com/openssl/openssl/archive/refs/tags/${OPENSSL_VERSION}.tar.gz")
+    fi
+
+    for url in "${urls[@]}"; do
+        echo "Downloading OpenSSL source from $url" >&2
+        if curl -fL --connect-timeout 15 --max-time 120 --retry 2 --retry-delay 2 -o "$archive" "$url"; then
+            tar -xzf "$archive" -C "$unpack_root"
+            unpacked_dir=$(find "$unpack_root" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+            if [[ -n "$unpacked_dir" && -f "$unpacked_dir/Configure" ]]; then
+                mv "$unpacked_dir" "$src_dir"
+                rm -rf "$unpack_root"
+                echo "$src_dir"
+                return
+            fi
+        fi
+        rm -rf "$unpack_root"
+        mkdir -p "$unpack_root"
+    done
+
+    if [[ "$ALLOW_GITHUB_OPENSSL_FETCH" == "1" ]]; then
+        echo "OpenSSL source archive download failed, trying git clone fallback" >&2
+        git -c http.lowSpeedLimit=1 -c http.lowSpeedTime=20 clone --depth 1 --branch "$OPENSSL_VERSION" \
+            https://github.com/openssl/openssl.git "$src_dir"
+        echo "$src_dir"
+        return
+    fi
+
+    echo "error: failed to fetch OpenSSL source. Set OPENSSL_SOURCE_DIR to a local source tree, set OPENSSL_ANDROID_ROOT to Android libssl/libcrypto artifacts, or set ALLOW_GITHUB_OPENSSL_FETCH=1 to allow GitHub fallback." >&2
+    exit 1
+}
+
+is_android_openssl_root() {
+    local candidate="$1"
+    local lib_dir
+    [[ -n "$candidate" ]] || return 1
+    lib_dir=$(android_openssl_lib_dir "$candidate") || return 1
+    [[ -f "$lib_dir/libcrypto.a" ]] || return 1
+    [[ -f "$lib_dir/libssl.a" ]] || return 1
+    [[ -f "$candidate/include/openssl/ssl.h" || -f "$candidate/include/openssl/opensslv.h" ]]
+}
+
+is_ios_device_openssl_root() {
+    local candidate="$1"
+    [[ -n "$candidate" ]] || return 1
+    [[ -f "$candidate/lib/libcrypto.a" ]] || return 1
+    [[ -f "$candidate/lib/libssl.a" ]] || return 1
+    [[ -f "$candidate/include/openssl/ssl.h" || -f "$candidate/include/openssl/opensslv.h" ]]
+}
+
+android_openssl_lib_dir() {
+    local candidate="$1"
+    if [[ -f "$candidate/lib/libcrypto.a" && -f "$candidate/lib/libssl.a" ]]; then
+        echo "$candidate/lib"
+        return
+    fi
+    if [[ -f "$candidate/lib/arm64-v8a/libcrypto.a" && -f "$candidate/lib/arm64-v8a/libssl.a" ]]; then
+        echo "$candidate/lib/arm64-v8a"
+        return
+    fi
+    return 1
+}
+
+android_static_library_is_arm64() {
+    local library="$1"
+    local host_tag="$2"
+    local toolchain_bin="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$host_tag/bin"
+    local ar_tool="$toolchain_bin/llvm-ar"
+    local readelf_tool="$toolchain_bin/llvm-readelf"
+    local temp_dir
+    local first_object
+
+    [[ -f "$ar_tool" && -f "$readelf_tool" ]] || return 1
+    temp_dir=$(mktemp -d)
+    (
+        cd "$temp_dir"
+        "$ar_tool" x "$library"
+    ) >/dev/null 2>&1 || {
+        rm -rf "$temp_dir"
+        return 1
+    }
+    first_object=$(find "$temp_dir" -type f | head -n 1)
+    if [[ -z "$first_object" ]]; then
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    if "$readelf_tool" -h "$first_object" | grep -q "Machine:.*AArch64"; then
+        rm -rf "$temp_dir"
+        return 0
+    fi
+    rm -rf "$temp_dir"
+    return 1
+}
+
+ios_static_library_is_iphoneos_arm64() {
+    local library="$1"
+    local temp_dir
+    local first_object
+
+    temp_dir=$(mktemp -d)
+    (
+        cd "$temp_dir"
+        ar -x "$library"
+    ) >/dev/null 2>&1 || {
+        rm -rf "$temp_dir"
+        return 1
+    }
+    first_object=$(find "$temp_dir" -type f | head -n 1)
+    if [[ -z "$first_object" ]]; then
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    if file "$first_object" | grep -q "Mach-O 64-bit object arm64" &&
+        otool -l "$first_object" | grep -Eq "LC_VERSION_MIN_IPHONEOS|platform IOS"; then
+        rm -rf "$temp_dir"
+        return 0
+    fi
+    rm -rf "$temp_dir"
+    return 1
+}
+
+require_android_openssl_arm64() {
+    local root="$1"
+    local host_tag="$2"
+    local lib_dir
+
+    lib_dir=$(android_openssl_lib_dir "$root") || {
+        echo "error: OpenSSL root is missing libssl.a/libcrypto.a: $root" >&2
+        exit 1
+    }
+    if ! android_static_library_is_arm64 "$lib_dir/libcrypto.a" "$host_tag"; then
+        echo "error: $lib_dir/libcrypto.a is not an Android arm64-v8a static library" >&2
+        exit 1
+    fi
+    if ! android_static_library_is_arm64 "$lib_dir/libssl.a" "$host_tag"; then
+        echo "error: $lib_dir/libssl.a is not an Android arm64-v8a static library" >&2
+        exit 1
+    fi
+}
+
+require_ios_device_openssl_arm64() {
+    local root="$1"
+
+    if ! ios_static_library_is_iphoneos_arm64 "$root/lib/libcrypto.a"; then
+        echo "error: $root/lib/libcrypto.a is not an iPhoneOS arm64 static library" >&2
+        exit 1
+    fi
+    if ! ios_static_library_is_iphoneos_arm64 "$root/lib/libssl.a"; then
+        echo "error: $root/lib/libssl.a is not an iPhoneOS arm64 static library" >&2
+        exit 1
+    fi
+}
+
+find_android_openssl_root() {
+    local candidate
+    local candidates=(
+        "$OPENSSL_ANDROID_ROOT"
+        "$LOCAL_OPENSSL_REPO_DIR/output/android/openssl-arm64-v8a"
+        "$LOCAL_OPENSSL_REPO_DIR/example/android/demo2/test_curl_with_ssl_and_http2_android/app/src/main/cpp/test"
+        "$ARTIFACT_ROOT/android/openssl/arm64-v8a"
+        "$CJMP_THIRD_PARTY_OPENSSL_DIR/android/arm64-v8a"
+        "$CJMP_THIRD_PARTY_OPENSSL_DIR/linux_android_aarch64_cjnative"
+        "$CJMP_THIRD_PARTY_OPENSSL_DIR"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if is_android_openssl_root "$candidate"; then
+            echo "$candidate"
+            return
+        fi
+    done
+}
+
+find_ios_device_openssl_root() {
+    local candidate
+    local candidates=(
+        "$OPENSSL_IOS_ROOT"
+        "$LOCAL_OPENSSL_REPO_DIR/output/ios/openssl-arm64"
+        "$ARTIFACT_ROOT/ios/openssl"
+        "$CJMP_THIRD_PARTY_OPENSSL_DIR/ios/arm64"
+        "$CJMP_THIRD_PARTY_OPENSSL_DIR/ios_aarch64_cjnative"
+        "$CJMP_THIRD_PARTY_OPENSSL_DIR"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if is_ios_device_openssl_root "$candidate"; then
+            echo "$candidate"
+            return
+        fi
+    done
+}
+
+copy_android_openssl_root() {
+    local source_dir="$1"
+    local out_dir="$2"
+    local lib_dir
+
+    lib_dir=$(android_openssl_lib_dir "$source_dir")
+
+    rm -rf "$out_dir"
+    mkdir -p "$out_dir/lib"
+    cp "$lib_dir/libcrypto.a" "$lib_dir/libssl.a" "$out_dir/lib/"
+    cp -R "$source_dir/include" "$out_dir/"
+}
+
+copy_openssl_source_tree() {
+    local source_dir="$1"
+    local work_dir="$2"
+
+    rm -rf "$work_dir"
+    if [[ -d "$source_dir/.git" ]]; then
+        git clone --quiet "$source_dir" "$work_dir"
+    else
+        mkdir -p "$work_dir"
+        tar -C "$source_dir" -cf - . | tar -C "$work_dir" -xf -
+    fi
 }
 
 prepare_td_generated_sources() {
@@ -88,17 +378,28 @@ prepare_td_generated_sources() {
 }
 
 build_android_openssl() {
-    local openssl_src="$1"
+    local host_tag="$1"
     local out_dir="$ARTIFACT_ROOT/android/openssl/arm64-v8a"
     local work_dir="$WORK_ROOT/openssl-android-arm64"
-    local host_tag="$2"
+    local openssl_root
+    local openssl_src
 
     if [[ -f "$out_dir/lib/libcrypto.a" && -f "$out_dir/lib/libssl.a" ]]; then
+        ANDROID_OPENSSL_ROOT_FOR_TDLIB="$out_dir"
         return
     fi
 
-    rm -rf "$work_dir"
-    git clone --quiet "$openssl_src" "$work_dir"
+    normalize_android_openssl_artifacts
+    openssl_root=$(find_android_openssl_root)
+    if [[ -n "$openssl_root" ]]; then
+        require_android_openssl_arm64 "$openssl_root" "$host_tag"
+        echo "Using Android OpenSSL artifacts from $openssl_root"
+        ANDROID_OPENSSL_ROOT_FOR_TDLIB="$openssl_root"
+        return
+    fi
+
+    openssl_src=$(fetch_openssl_source)
+    copy_openssl_source_tree "$openssl_src" "$work_dir"
 
     export ANDROID_NDK_ROOT
     export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
@@ -114,17 +415,29 @@ build_android_openssl() {
     mkdir -p "$out_dir/lib"
     cp "$work_dir/libcrypto.a" "$work_dir/libssl.a" "$out_dir/lib/"
     cp -R "$work_dir/include" "$out_dir/"
+    ANDROID_OPENSSL_ROOT_FOR_TDLIB="$out_dir"
+}
+
+strip_android_shared_library() {
+    local library_path="$1"
+    local host_tag="$2"
+    local strip_tool="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$host_tag/bin/llvm-strip"
+
+    if [[ -f "$strip_tool" && -f "$library_path" ]]; then
+        "$strip_tool" --strip-unneeded "$library_path"
+    fi
 }
 
 build_android_tdjson() {
     local host_tag="$1"
     local build_dir="$WORK_ROOT/td-android-arm64"
-    local openssl_dir="$ARTIFACT_ROOT/android/openssl/arm64-v8a"
+    local openssl_dir="${ANDROID_OPENSSL_ROOT_FOR_TDLIB:-$ARTIFACT_ROOT/android/openssl/arm64-v8a}"
     local out_dir="$ARTIFACT_ROOT/android/arm64-v8a"
     local lib_path
 
     if [[ -f "$out_dir/libtdjson.so" ]]; then
         echo "Android libtdjson.so already exists, skipping build"
+        strip_android_shared_library "$out_dir/libtdjson.so" "$host_tag"
         return
     fi
 
@@ -158,6 +471,7 @@ build_android_tdjson() {
     rm -rf "$out_dir"
     mkdir -p "$out_dir"
     cp "$lib_path" "$out_dir/libtdjson.so"
+    strip_android_shared_library "$out_dir/libtdjson.so" "$host_tag"
     cp "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$host_tag/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" "$out_dir/libc++_shared.so"
 }
 
@@ -170,8 +484,7 @@ build_ios_simulator_openssl() {
         return
     fi
 
-    rm -rf "$work_dir"
-    git clone --quiet "$openssl_src" "$work_dir"
+    copy_openssl_source_tree "$openssl_src" "$work_dir"
 
     pushd "$work_dir" >/dev/null
     export CFLAGS="-arch arm64 -isysroot $IOS_SIMULATOR_SDK"
@@ -223,22 +536,34 @@ build_ios_simulator_tdjson() {
     fi
 
     rm -rf "$out_dir/libtdjson.dylib"
+    mkdir -p "$out_dir"
     cp "$lib_path" "$out_dir/libtdjson.dylib"
     install_name_tool -id @rpath/libtdjson.dylib "$out_dir/libtdjson.dylib"
 }
 
 build_ios_device_openssl() {
-    local openssl_src="$1"
     local out_dir="$ARTIFACT_ROOT/ios/openssl"
     local work_dir="$WORK_ROOT/openssl-ios-device"
     local ios_sdk_path="${IOS_SDK_PATH:-$(xcrun --sdk iphoneos --show-sdk-path)}"
+    local openssl_root
+    local openssl_src
 
     if [[ -f "$out_dir/lib/libcrypto.a" && -f "$out_dir/lib/libssl.a" ]]; then
+        IOS_OPENSSL_ROOT_FOR_TDLIB="$out_dir"
         return
     fi
 
-    rm -rf "$work_dir"
-    git clone --quiet "$openssl_src" "$work_dir"
+    normalize_ios_device_openssl_artifacts
+    openssl_root=$(find_ios_device_openssl_root)
+    if [[ -n "$openssl_root" ]]; then
+        require_ios_device_openssl_arm64 "$openssl_root"
+        echo "Using iOS OpenSSL artifacts from $openssl_root"
+        IOS_OPENSSL_ROOT_FOR_TDLIB="$openssl_root"
+        return
+    fi
+
+    openssl_src=$(fetch_openssl_source)
+    copy_openssl_source_tree "$openssl_src" "$work_dir"
 
     pushd "$work_dir" >/dev/null
     export CFLAGS="-arch arm64 -isysroot $ios_sdk_path"
@@ -256,7 +581,7 @@ build_ios_device_openssl() {
 
 build_ios_device_tdjson() {
     local build_dir="$WORK_ROOT/td-ios-device"
-    local openssl_dir="$ARTIFACT_ROOT/ios/openssl"
+    local openssl_dir="${IOS_OPENSSL_ROOT_FOR_TDLIB:-$ARTIFACT_ROOT/ios/openssl}"
     local out_dir="$ARTIFACT_ROOT/ios"
     local lib_path
 
@@ -295,33 +620,52 @@ build_ios_device_tdjson() {
 }
 
 build_android_target() {
-    local openssl_src="$1"
-    local host_tag="$2"
-    build_android_openssl "$openssl_src" "$host_tag"
+    local host_tag="$1"
+    local out_dir="$ARTIFACT_ROOT/android/arm64-v8a"
+
+    if [[ -f "$out_dir/libtdjson.so" ]]; then
+        echo "Android libtdjson.so already exists, skipping TDLib build"
+        strip_android_shared_library "$out_dir/libtdjson.so" "$host_tag"
+        return
+    fi
+
+    build_android_openssl "$host_tag"
     prepare_td_generated_sources
     build_android_tdjson "$host_tag"
 }
 
 build_ios_simulator_target() {
-    local openssl_src="$1"
+    local out_dir="$ARTIFACT_ROOT/ios-sim"
+    local openssl_src
+
+    if [[ -f "$out_dir/libtdjson.dylib" ]]; then
+        echo "iOS simulator libtdjson.dylib already exists, skipping TDLib build"
+        return
+    fi
+
+    openssl_src=$(fetch_openssl_source)
     build_ios_simulator_openssl "$openssl_src"
     prepare_td_generated_sources
     build_ios_simulator_tdjson
 }
 
 build_ios_device_target() {
-    local openssl_src="$1"
-    build_ios_device_openssl "$openssl_src"
+    local out_dir="$ARTIFACT_ROOT/ios"
+
+    if [[ -f "$out_dir/libtdjson.dylib" ]]; then
+        echo "iOS device libtdjson.dylib already exists, skipping TDLib build"
+        return
+    fi
+
+    build_ios_device_openssl
     prepare_td_generated_sources
     build_ios_device_tdjson
 }
 
 main() {
-    local openssl_src
     local host_tag
 
     prepare_common_environment
-    openssl_src=$(fetch_openssl_source)
     host_tag=$(find_android_host_tag)
     if [[ "$host_tag" == "error" ]]; then
         echo "error: failed to locate an Android NDK host prebuilt directory" >&2
@@ -331,18 +675,18 @@ main() {
     for target in "${TARGETS[@]}"; do
         case "$target" in
             android)
-                build_android_target "$openssl_src" "$host_tag"
+                build_android_target "$host_tag"
                 ;;
             ios-sim)
-                build_ios_simulator_target "$openssl_src"
+                build_ios_simulator_target
                 ;;
             ios)
-                build_ios_device_target "$openssl_src"
+                build_ios_device_target
                 ;;
             all)
-                build_android_target "$openssl_src" "$host_tag"
-                build_ios_simulator_target "$openssl_src"
-                build_ios_device_target "$openssl_src"
+                build_android_target "$host_tag"
+                build_ios_simulator_target
+                build_ios_device_target
                 ;;
             *)
                 echo "error: unsupported target '$target' (expected: android, ios, ios-sim, all)" >&2

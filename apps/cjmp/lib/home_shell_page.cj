@@ -5,6 +5,7 @@ import ohos.router.Router
 import ohos.state_macro_manage.Entry
 import ohos.state_macro_manage.Component
 import ohos.state_macro_manage.State
+import std.time.*
 import std.unicode.*
 
 let HOME_TAB_CHATS = "chats"
@@ -43,7 +44,11 @@ let HOME_STATE_ERROR_LABEL = "Error"
 let HOME_CONTACTS_SEARCH_PLACEHOLDER = "Search"
 let HOME_CONTACTS_SEARCH_EMPTY_TITLE = "No contacts found"
 let HOME_CONTACTS_SEARCH_EMPTY_BODY = "Try searching by name or status."
+let HOME_CONTACTS_EMPTY_TITLE = "No synced contacts"
+let HOME_CONTACTS_EMPTY_BODY = "Telegram did not return any contacts for this account yet."
 let HOME_ACTION_NOTICE_SUFFIX = "is not wired yet in this demo."
+let HOME_REAL_CHATS_BADGE_PINNED = "Pinned"
+let HOME_REAL_CHATS_BADGE_MUTED = "Muted"
 let HOME_CONTACTS_QUICK_ACTIONS_TITLE = "Quick Actions"
 let HOME_CONTACTS_QUICK_ACTION_ADD = "Add Contact"
 let HOME_CONTACTS_QUICK_ACTION_NEARBY = "People Nearby"
@@ -119,12 +124,20 @@ class HomeShellPage {
     var contactsSearchQuery: String = ""
     @State
     var homeActionNotice: String = ""
+    @State
+    var realChatListVersion: Int64 = 0
+    @State
+    var realContactsVersion: Int64 = 0
+    @State
+    var realSettingsVersion: Int64 = 0
 
     var chatListScroller: ListScroller = ListScroller()
     var contactsScroller: ListScroller = ListScroller()
     var settingsScroller: ListScroller = ListScroller()
     private var entryMode: String = ENTRY_MODE_HOME_DEFAULT
     private var didResolveEntryMode: Bool = false
+    private var didStartRealSurfaceSync: Bool = false
+    private var didStartRealSurfaceSession: Bool = false
 
     protected override func aboutToAppear(): Unit {
         if (this.didResolveEntryMode) {
@@ -134,6 +147,15 @@ class HomeShellPage {
         this.entryMode = this.resolveEntryMode()
         this.activeTab = HOME_TAB_CHATS
         this.chatListState = resolveChatListStateForEntryMode(this.entryMode)
+        this.realChatListVersion = telegramChatListVersion()
+        if (!this.isSmokePreview()) {
+            this.ensureRealSurfaceSessionStarted()
+            requestTelegramDataSurfaceIfReady()
+            this.syncRealChatListState()
+            this.realContactsVersion = telegramContactsVersion()
+            this.realSettingsVersion = telegramSettingsVersion()
+            this.startRealSurfaceSyncIfNeeded()
+        }
     }
 
     func resolveEntryMode(): String {
@@ -146,6 +168,21 @@ class HomeShellPage {
     func showTab(tabId: String): Unit {
         this.activeTab = tabId
         this.homeActionNotice = ""
+        if (!this.isSmokePreview()) {
+            this.ensureRealSurfaceSessionStarted()
+        }
+        if (!this.isSmokePreview() && tabId == HOME_TAB_CHATS) {
+            requestTelegramDataSurfaceIfReady()
+            this.syncRealChatListState()
+        }
+        if (!this.isSmokePreview() && tabId == HOME_TAB_CONTACTS) {
+            requestTelegramDataSurfaceIfReady()
+            this.realContactsVersion = telegramContactsVersion()
+        }
+        if (!this.isSmokePreview() && tabId == HOME_TAB_SETTINGS) {
+            requestTelegramDataSurfaceIfReady()
+            this.realSettingsVersion = telegramSettingsVersion()
+        }
     }
 
     func isSmokePreview(): Bool {
@@ -153,7 +190,14 @@ class HomeShellPage {
     }
 
     func restoreSeedChats(): Unit {
-        this.chatListState = CHAT_LIST_STATE_POPULATED
+        if (this.isSmokePreview()) {
+            this.chatListState = CHAT_LIST_STATE_POPULATED
+            return
+        }
+        resetTelegramChatListState()
+        this.ensureRealSurfaceSessionStarted()
+        requestTelegramDataSurfaceIfReady()
+        this.syncRealChatListState()
     }
 
     func showChatListState(chatListState: String): Unit {
@@ -164,8 +208,12 @@ class HomeShellPage {
         Router.push(url: ROUTE_CHAT_DETAIL, params: conversationId)
     }
 
+    func openRealChatDetail(chatId: Int64): Unit {
+        Router.push(url: ROUTE_CHAT_DETAIL, params: "tdchat:${chatId}")
+    }
+
     func signOutDemoSession(): Unit {
-        clearDemoSession()
+        destroyTelegramAuthSessionAndLocalState()
         Router.back()
     }
 
@@ -184,10 +232,13 @@ class HomeShellPage {
         } else if (this.activeTab == HOME_TAB_SETTINGS) {
             return HOME_SUBTITLE_SETTINGS
         }
-        return HOME_SUBTITLE_CHATS
+        return this.currentChatsSubtitle()
     }
 
     func currentSessionHeadline(): String {
+        if (!this.isSmokePreview() && telegramSettingsKind() == TELEGRAM_SETTINGS_KIND_READY) {
+            return "Signed in with Telegram"
+        }
         if (getCurrentDemoSessionPhoneNumber().isEmpty()) {
             return HOME_SETTINGS_EMPTY_HEADLINE
         }
@@ -195,13 +246,26 @@ class HomeShellPage {
     }
 
     func currentSessionBody(): String {
+        if (!this.isSmokePreview() && telegramSettingsKind() == TELEGRAM_SETTINGS_KIND_READY) {
+            return "Real TDLib session is active on this device."
+        }
         if (getCurrentDemoSessionPhoneNumber().isEmpty()) {
             return HOME_SETTINGS_EMPTY_BODY
         }
         return getCurrentDemoSessionDetailCopy()
     }
 
+    func currentSettingsTitle(): String {
+        if (!this.isSmokePreview() && telegramSettingsKind() == TELEGRAM_SETTINGS_KIND_READY) {
+            return telegramSettingsDisplayName()
+        }
+        return HOME_SETTINGS_PROFILE_TITLE
+    }
+
     func currentSettingsPhone(): String {
+        if (!this.isSmokePreview() && telegramSettingsKind() == TELEGRAM_SETTINGS_KIND_READY) {
+            return telegramSettingsPhone()
+        }
         if (getCurrentDemoSessionPhoneNumber().isEmpty()) {
             return HOME_SETTINGS_PROFILE_PHONE
         }
@@ -218,6 +282,123 @@ class HomeShellPage {
 
     func showHomeActionNotice(actionLabel: String): Unit {
         this.homeActionNotice = "${actionLabel} ${HOME_ACTION_NOTICE_SUFFIX}"
+    }
+
+    func syncRealChatListState(): Unit {
+        this.realChatListVersion = telegramChatListVersion()
+        let realKind = telegramChatListKind()
+        if (telegramSettingsSelfChatId() != 0) {
+            this.chatListState = CHAT_LIST_STATE_POPULATED
+            return
+        }
+        if (realKind == TELEGRAM_CHAT_LIST_KIND_LOADING || realKind == TELEGRAM_CHAT_LIST_KIND_IDLE) {
+            this.chatListState = CHAT_LIST_STATE_LOADING
+            return
+        }
+        if (realKind == TELEGRAM_CHAT_LIST_KIND_EMPTY) {
+            this.chatListState = CHAT_LIST_STATE_EMPTY
+            return
+        }
+        if (realKind == TELEGRAM_CHAT_LIST_KIND_ERROR) {
+            this.chatListState = CHAT_LIST_STATE_ERROR
+            return
+        }
+        this.chatListState = CHAT_LIST_STATE_POPULATED
+    }
+
+    func startRealSurfaceSyncIfNeeded(): Unit {
+        if (this.didStartRealSurfaceSync) {
+            return
+        }
+        this.didStartRealSurfaceSync = true
+        let _ = spawn {
+            while (!this.isSmokePreview()) {
+                sleep(500 * Duration.millisecond)
+                requestTelegramDataSurfaceIfReady()
+                if (this.realChatListVersion != telegramChatListVersion()) {
+                    this.syncRealChatListState()
+                }
+                if (this.realContactsVersion != telegramContactsVersion()) {
+                    this.realContactsVersion = telegramContactsVersion()
+                }
+                if (this.realSettingsVersion != telegramSettingsVersion()) {
+                    this.realSettingsVersion = telegramSettingsVersion()
+                    this.syncRealChatListState()
+                }
+            }
+        }
+    }
+
+    func ensureRealSurfaceSessionStarted(): Unit {
+        if (this.didStartRealSurfaceSession) {
+            return
+        }
+        this.didStartRealSurfaceSession = true
+        let _ = spawn {
+            let _ = ensureTelegramDataSurfaceSessionStarted()
+        }
+    }
+
+    func currentChatsSubtitle(): String {
+        if (this.isSmokePreview()) {
+            return HOME_SUBTITLE_CHATS
+        }
+        let realKind = telegramChatListKind()
+        if (realKind == TELEGRAM_CHAT_LIST_KIND_POPULATED) {
+            return "Real Telegram chats from TDLib."
+        }
+        if (realKind == TELEGRAM_CHAT_LIST_KIND_ERROR) {
+            return "Real Telegram chats could not be loaded yet."
+        }
+        return "Syncing your Telegram conversations."
+    }
+
+    func unreadBadgeCopy(unreadCount: Int64): String {
+        if (unreadCount <= 0) {
+            return ""
+        }
+        return "${unreadCount}"
+    }
+
+    func chatInitial(title: String): String {
+        if (title.isEmpty()) {
+            return "T"
+        }
+        for (rune in title.runes()) {
+            return String([rune])
+        }
+        return "T"
+    }
+
+    func contactInitials(name: String): String {
+        if (name.isEmpty()) {
+            return "TG"
+        }
+        var result = ""
+        let parts = name.split(" ", removeEmpty: true)
+        for (index in 0..parts.size) {
+            for (rune in parts[index].runes()) {
+                result += String([rune])
+                break
+            }
+            if (result.size >= 2) {
+                return result
+            }
+        }
+        if (result.isEmpty()) {
+            return "TG"
+        }
+        return result
+    }
+
+    func firstContactSection(name: String): String {
+        if (name.isEmpty()) {
+            return "T"
+        }
+        for (rune in name.runes()) {
+            return String([rune]).toUpper()
+        }
+        return "T"
     }
 
     func normalizedContactsSearchQuery(): String {
@@ -243,6 +424,17 @@ class HomeShellPage {
     }
 
     func hasVisibleContacts(): Bool {
+        if (!this.isSmokePreview()) {
+            if (telegramContactsKind() != TELEGRAM_CONTACTS_KIND_POPULATED) {
+                return false
+            }
+            for (row in telegramContactsRows()) {
+                if (this.matchesContactsSearch(row.displayName, row.statusLabel)) {
+                    return true
+                }
+            }
+            return false
+        }
         return this.matchesContactsSearch("Alex Mason", HOME_CONTACT_STATUS_ONLINE) ||
             this.matchesContactsSearch("Jun Liu", HOME_CONTACT_STATUS_LAST_SEEN_RECENTLY) ||
             this.matchesContactsSearch("Mina Park", HOME_CONTACT_STATUS_ONLINE) ||
@@ -436,7 +628,11 @@ class HomeShellPage {
                                 .width(40)
                                 .height(40)
 
-                            Text(HOME_LOADING_COPY)
+                            Text(if (this.isSmokePreview()) {
+                                HOME_LOADING_COPY
+                            } else {
+                                "Loading Telegram chats..."
+                            })
                                 .fontSize(15)
                                 .fontColor(COLOR_TEXT_PRIMARY)
                                 .fontWeight(FontWeight.Medium)
@@ -452,7 +648,11 @@ class HomeShellPage {
                                 .fontColor(COLOR_TEXT_PRIMARY)
                                 .fontWeight(FontWeight.Bold)
 
-                            Text(HOME_EMPTY_BODY)
+                            Text(if (this.isSmokePreview()) {
+                                HOME_EMPTY_BODY
+                            } else {
+                                "No Telegram chats are available in the main list yet."
+                            })
                                 .fontSize(14)
                                 .fontColor(COLOR_TEXT_SECONDARY)
                                 .textAlign(TextAlign.Center)
@@ -473,7 +673,13 @@ class HomeShellPage {
                                 .fontColor(COLOR_TEXT_PRIMARY)
                                 .fontWeight(FontWeight.Bold)
 
-                            Text(HOME_ERROR_BODY)
+                            Text(if (this.isSmokePreview()) {
+                                HOME_ERROR_BODY
+                            } else if (!telegramChatListNotice().isEmpty()) {
+                                telegramChatListNotice()
+                            } else {
+                                "Check the Telegram session and try again."
+                            })
                                 .fontSize(14)
                                 .fontColor(COLOR_TEXT_SECONDARY)
                                 .textAlign(TextAlign.Center)
@@ -498,7 +704,7 @@ class HomeShellPage {
                         .padding(left: 24, right: 24, top: 24, bottom: 24)
                         .backgroundColor(COLOR_SURFACE)
                         .borderRadius(24)
-                    } else {
+                    } else if (this.isSmokePreview()) {
                         List(space: 12, initialIndex: 0, scroller: this.chatListScroller) {
                             ListItem() {
                                 Row(14) {
@@ -664,6 +870,136 @@ class HomeShellPage {
                         .width(100.percent)
                         .height(100.percent)
                         .scrollBar(BarState.Off)
+                    } else {
+                        List(space: 12, initialIndex: 0, scroller: this.chatListScroller) {
+                            if (telegramSettingsSelfChatId() != 0) {
+                                ListItem() {
+                                    Row(14) {
+                                        Row() {
+                                            Text("SM")
+                                                .fontSize(18)
+                                                .fontColor(COLOR_TEXT_PRIMARY)
+                                                .fontWeight(FontWeight.Bold)
+                                        }
+                                        .width(52)
+                                        .height(52)
+                                        .justifyContent(FlexAlign.Center)
+                                        .backgroundColor(homeAvatarTintColor("green"))
+                                        .borderRadius(26)
+
+                                        Column(8) {
+                                            Text("Saved Messages")
+                                                .fontSize(16)
+                                                .fontColor(COLOR_TEXT_PRIMARY)
+                                                .fontWeight(FontWeight.Bold)
+                                                .width(100.percent)
+
+                                            Text("Send a real Telegram message to your own account.")
+                                                .fontSize(14)
+                                                .fontColor(COLOR_TEXT_SECONDARY)
+                                                .maxLines(2)
+                                                .width(100.percent)
+                                        }
+                                        .alignItems(HorizontalAlign.Start)
+                                        .layoutWeight(1)
+                                    }
+                                    .width(100.percent)
+                                    .padding(left: 16, right: 16, top: 16, bottom: 16)
+                                    .backgroundColor(COLOR_SURFACE)
+                                    .borderRadius(22)
+                                    .onClick({ _ =>
+                                        this.openRealChatDetail(telegramSettingsSelfChatId())
+                                    })
+                                }
+                            }
+
+                            ForEach(
+                                telegramChatListRows(),
+                                itemGeneratorFunc: { row: TelegramChatListRow, _: Int64 =>
+                                    ListItem() {
+                                        Row(14) {
+                                            Row() {
+                                                Text(this.chatInitial(row.title))
+                                                    .fontSize(18)
+                                                    .fontColor(COLOR_TEXT_PRIMARY)
+                                                    .fontWeight(FontWeight.Bold)
+                                            }
+                                            .width(52)
+                                            .height(52)
+                                            .justifyContent(FlexAlign.Center)
+                                            .backgroundColor(homeAvatarTintColor("blue"))
+                                            .borderRadius(26)
+
+                                            Column(8) {
+                                                Row(8) {
+                                                    Text(row.title)
+                                                        .fontSize(16)
+                                                        .fontColor(COLOR_TEXT_PRIMARY)
+                                                        .fontWeight(FontWeight.Bold)
+                                                        .layoutWeight(1)
+
+                                                    if (row.isPinned) {
+                                                        Text(HOME_REAL_CHATS_BADGE_PINNED)
+                                                            .fontSize(11)
+                                                            .fontColor(COLOR_BRAND)
+                                                            .padding(left: 8, right: 8, top: 4, bottom: 4)
+                                                            .backgroundColor(COLOR_BRAND_SOFT)
+                                                            .borderRadius(999)
+                                                    } else if (row.isMuted) {
+                                                        Text(HOME_REAL_CHATS_BADGE_MUTED)
+                                                            .fontSize(11)
+                                                            .fontColor(COLOR_TEXT_SECONDARY)
+                                                            .padding(left: 8, right: 8, top: 4, bottom: 4)
+                                                            .backgroundColor(COLOR_SURFACE_SUBTLE)
+                                                            .borderRadius(999)
+                                                    }
+                                                }
+                                                .width(100.percent)
+
+                                                Text(row.snippet)
+                                                    .fontSize(14)
+                                                    .fontColor(COLOR_TEXT_SECONDARY)
+                                                    .maxLines(2)
+                                                    .width(100.percent)
+                                            }
+                                            .alignItems(HorizontalAlign.Start)
+                                            .layoutWeight(1)
+
+                                            Column(10) {
+                                                Text(row.timestampLabel)
+                                                    .fontSize(12)
+                                                    .fontColor(COLOR_TEXT_MUTED)
+
+                                                if (row.unreadCount > 0) {
+                                                    Text(this.unreadBadgeCopy(row.unreadCount))
+                                                        .fontSize(12)
+                                                        .fontColor(COLOR_SURFACE)
+                                                        .fontWeight(FontWeight.Bold)
+                                                        .padding(left: 9, right: 9, top: 6, bottom: 6)
+                                                        .backgroundColor(COLOR_BRAND)
+                                                        .borderRadius(999)
+                                                }
+                                            }
+                                            .alignItems(HorizontalAlign.End)
+                                        }
+                                        .width(100.percent)
+                                        .padding(left: 16, right: 16, top: 16, bottom: 16)
+                                        .backgroundColor(COLOR_SURFACE)
+                                        .borderRadius(22)
+                                        .onClick({ _ =>
+                                            this.openRealChatDetail(row.chatId)
+                                        })
+                                    }
+                                },
+                                keyGeneratorFunc: { row: TelegramChatListRow, _: Int64 => row.chatId.toString() }
+                            )
+                        }
+                        .id(ID_HOME_CHAT_LIST)
+                        .listDirection(Axis.Vertical)
+                        .edgeEffect(EdgeEffect.Spring)
+                        .width(100.percent)
+                        .height(100.percent)
+                        .scrollBar(BarState.Off)
                     }
                 } else if (this.activeTab == HOME_TAB_CONTACTS) {
                     Column(0) {
@@ -761,7 +1097,106 @@ class HomeShellPage {
                                 }
                             }
 
-                            if (this.matchesContactsSearch("Alex Mason", HOME_CONTACT_STATUS_ONLINE)) {
+                            if (!this.isSmokePreview() && telegramContactsKind() == TELEGRAM_CONTACTS_KIND_LOADING) {
+                                ListItem() {
+                                    Column(12) {
+                                        LoadingProgress()
+                                            .color(COLOR_BRAND)
+                                            .foregroundColor(COLOR_BRAND)
+                                            .enableLoading(true)
+                                            .width(34)
+                                            .height(34)
+
+                                        Text("Loading Telegram contacts...")
+                                            .fontSize(14)
+                                            .fontColor(COLOR_TEXT_PRIMARY)
+                                            .fontWeight(FontWeight.Medium)
+                                    }
+                                    .width(100.percent)
+                                    .padding(left: 16, right: 16, top: 18, bottom: 18)
+                                    .backgroundColor(COLOR_SURFACE)
+                                    .borderRadius(22)
+                                    .alignItems(HorizontalAlign.Center)
+                                }
+                            }
+
+                            if (!this.isSmokePreview() && telegramContactsKind() == TELEGRAM_CONTACTS_KIND_ERROR) {
+                                ListItem() {
+                                    Column(10) {
+                                        Text("Couldn't load contacts")
+                                            .fontSize(16)
+                                            .fontColor(COLOR_TEXT_PRIMARY)
+                                            .fontWeight(FontWeight.Bold)
+
+                                        Text(if (telegramContactsNotice().isEmpty()) {
+                                            "Check the Telegram session and try again."
+                                        } else {
+                                            telegramContactsNotice()
+                                        })
+                                            .fontSize(13)
+                                            .fontColor(COLOR_TEXT_SECONDARY)
+                                            .width(100.percent)
+                                    }
+                                    .width(100.percent)
+                                    .padding(left: 16, right: 16, top: 18, bottom: 18)
+                                    .backgroundColor(COLOR_SURFACE)
+                                    .borderRadius(22)
+                                }
+                            }
+
+                            if (!this.isSmokePreview() && telegramContactsKind() == TELEGRAM_CONTACTS_KIND_POPULATED) {
+                                ForEach(
+                                    telegramContactsRows(),
+                                    itemGeneratorFunc: { row: TelegramContactRow, _: Int64 =>
+                                        if (this.matchesContactsSearch(row.displayName, row.statusLabel)) {
+                                            ListItem() {
+                                                Column(10) {
+                                                    Text(this.firstContactSection(row.displayName))
+                                                        .fontSize(13)
+                                                        .fontColor(COLOR_TEXT_MUTED)
+                                                        .fontWeight(FontWeight.Medium)
+
+                                                    Row(14) {
+                                                        Row() {
+                                                            Text(this.contactInitials(row.displayName))
+                                                                .fontSize(14)
+                                                                .fontColor(COLOR_TEXT_PRIMARY)
+                                                                .fontWeight(FontWeight.Bold)
+                                                        }
+                                                        .width(40)
+                                                        .height(40)
+                                                        .justifyContent(FlexAlign.Center)
+                                                        .backgroundColor(homeAvatarTintColor("green"))
+                                                        .borderRadius(20)
+
+                                                        Column(4) {
+                                                            Text(row.displayName)
+                                                                .fontSize(15)
+                                                                .fontColor(COLOR_TEXT_PRIMARY)
+                                                                .fontWeight(FontWeight.Medium)
+
+                                                            Text(row.statusLabel)
+                                                                .fontSize(13)
+                                                                .fontColor(homeContactStatusColor(row.statusLabel))
+                                                        }
+                                                        .alignItems(HorizontalAlign.Start)
+                                                        .layoutWeight(1)
+                                                    }
+                                                    .width(100.percent)
+                                                    .padding(left: 16, right: 16, top: 14, bottom: 14)
+                                                    .backgroundColor(COLOR_SURFACE)
+                                                    .borderRadius(22)
+                                                }
+                                                .width(100.percent)
+                                            }
+                                        }
+                                    },
+                                    keyGeneratorFunc: { row: TelegramContactRow, _: Int64 => row.userId.toString() }
+                                )
+                            }
+
+                            if (this.isSmokePreview() &&
+                                this.matchesContactsSearch("Alex Mason", HOME_CONTACT_STATUS_ONLINE)) {
                                 ListItem() {
                                     Column(10) {
                                         Text("A")
@@ -807,7 +1242,8 @@ class HomeShellPage {
                                 }
                             }
 
-                            if (this.matchesContactsSearch("Jun Liu", HOME_CONTACT_STATUS_LAST_SEEN_RECENTLY)) {
+                            if (this.isSmokePreview() &&
+                                this.matchesContactsSearch("Jun Liu", HOME_CONTACT_STATUS_LAST_SEEN_RECENTLY)) {
                                 ListItem() {
                                     Column(10) {
                                         Text("J")
@@ -853,7 +1289,8 @@ class HomeShellPage {
                                 }
                             }
 
-                            if (this.matchesContactsSearch("Mina Park", HOME_CONTACT_STATUS_ONLINE)) {
+                            if (this.isSmokePreview() &&
+                                this.matchesContactsSearch("Mina Park", HOME_CONTACT_STATUS_ONLINE)) {
                                 ListItem() {
                                     Column(10) {
                                         Text("M")
@@ -899,7 +1336,8 @@ class HomeShellPage {
                                 }
                             }
 
-                            if (this.matchesContactsSearch("Ravi Tan", HOME_CONTACT_STATUS_LAST_SEEN_2_HOURS)) {
+                            if (this.isSmokePreview() &&
+                                this.matchesContactsSearch("Ravi Tan", HOME_CONTACT_STATUS_LAST_SEEN_2_HOURS)) {
                                 ListItem() {
                                     Column(10) {
                                         Text("R")
@@ -945,7 +1383,8 @@ class HomeShellPage {
                                 }
                             }
 
-                            if (this.matchesContactsSearch("Sara Kim", HOME_CONTACT_STATUS_LAST_SEEN_RECENTLY)) {
+                            if (this.isSmokePreview() &&
+                                this.matchesContactsSearch("Sara Kim", HOME_CONTACT_STATUS_LAST_SEEN_RECENTLY)) {
                                 ListItem() {
                                     Column(10) {
                                         Text("S")
@@ -994,12 +1433,24 @@ class HomeShellPage {
                             if (!this.hasVisibleContacts()) {
                                 ListItem() {
                                     Column(10) {
-                                        Text(HOME_CONTACTS_SEARCH_EMPTY_TITLE)
+                                        Text(if (!this.isSmokePreview() &&
+                                            !this.isContactsSearchActive() &&
+                                            telegramContactsKind() == TELEGRAM_CONTACTS_KIND_EMPTY) {
+                                            HOME_CONTACTS_EMPTY_TITLE
+                                        } else {
+                                            HOME_CONTACTS_SEARCH_EMPTY_TITLE
+                                        })
                                             .fontSize(16)
                                             .fontColor(COLOR_TEXT_PRIMARY)
                                             .fontWeight(FontWeight.Bold)
 
-                                        Text(HOME_CONTACTS_SEARCH_EMPTY_BODY)
+                                        Text(if (!this.isSmokePreview() &&
+                                            !this.isContactsSearchActive() &&
+                                            telegramContactsKind() == TELEGRAM_CONTACTS_KIND_EMPTY) {
+                                            HOME_CONTACTS_EMPTY_BODY
+                                        } else {
+                                            HOME_CONTACTS_SEARCH_EMPTY_BODY
+                                        })
                                             .fontSize(13)
                                             .fontColor(COLOR_TEXT_SECONDARY)
                                             .width(100.percent)
@@ -1029,7 +1480,7 @@ class HomeShellPage {
                                 Column(12) {
                                     Row(14) {
                                         Row() {
-                                            Text("TG")
+                                            Text(this.contactInitials(this.currentSettingsTitle()))
                                                 .fontSize(16)
                                                 .fontColor(COLOR_TEXT_PRIMARY)
                                                 .fontWeight(FontWeight.Bold)
@@ -1041,7 +1492,7 @@ class HomeShellPage {
                                         .borderRadius(24)
 
                                         Column(4) {
-                                            Text(HOME_SETTINGS_PROFILE_TITLE)
+                                            Text(this.currentSettingsTitle())
                                                 .id(ID_HOME_SETTINGS_PROFILE_TITLE)
                                                 .fontSize(18)
                                                 .fontColor(COLOR_TEXT_PRIMARY)
@@ -1339,5 +1790,12 @@ class HomeShellPage {
         .width(100.percent)
         .height(100.percent)
         .backgroundColor(COLOR_APP_BACKGROUND)
+        .onAppear({ =>
+            if (!this.isSmokePreview()) {
+                this.ensureRealSurfaceSessionStarted()
+                requestTelegramDataSurfaceIfReady()
+                this.syncRealChatListState()
+            }
+        })
     }
 }
