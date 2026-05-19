@@ -61,11 +61,6 @@ flowchart LR
     <td align="center"><strong>5. Current login surface</strong></td>
     <td align="center"><strong>6. Final captured state</strong></td>
   </tr>
-  <tr>
-    <td><img src="https://raw.githubusercontent.com/WalteR-MittY-pro/TelegramAIDev/main/doc/retry-input.png" width="240" alt="Retry input" /></td>
-    <td><img src="https://raw.githubusercontent.com/WalteR-MittY-pro/TelegramAIDev/main/doc/current-login.png" width="240" alt="Current login" /></td>
-    <td><img src="https://raw.githubusercontent.com/WalteR-MittY-pro/TelegramAIDev/main/doc/final-state.png" width="240" alt="Final state" /></td>
-  </tr>
 </table>
 
 ## Technical Pipeline
