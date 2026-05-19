@@ -79,6 +79,14 @@ func writeDemoSessionStorage(phoneNumber: String): Bool {
     return didPersist == 1
 }
 
+@When[target_platform == "hos"]
+func writeDemoSessionStorage(phoneNumber: String): Bool {
+    let phoneCString = unsafe { LibC.mallocCString(phoneNumber) }
+    let didPersist = unsafe { FfiSaveDemoSessionPhone(phoneCString) }
+    unsafe { LibC.free(phoneCString) }
+    return didPersist == 1
+}
+
 @When[target_platform == "android"]
 func writeDemoSessionStorage(phoneNumber: String): Bool {
     androidDemoSessionStoredPhoneNumber = phoneNumber
@@ -101,6 +109,14 @@ func readDemoSessionStorage(): String {
     return result
 }
 
+@When[target_platform == "hos"]
+func readDemoSessionStorage(): String {
+    let storedPhone: CString = unsafe { FfiLoadDemoSessionPhone() }
+    let result = storedPhone.toString()
+    unsafe { FfiFreeString(storedPhone) }
+    return result
+}
+
 @When[target_platform == "android"]
 func readDemoSessionStorage(): String {
     return androidDemoSessionStoredPhoneNumber
@@ -116,23 +132,28 @@ func clearDemoSessionStorage(): Unit {
     unsafe { FfiClearDemoSessionPhone() }
 }
 
+@When[target_platform == "hos"]
+func clearDemoSessionStorage(): Unit {
+    unsafe { FfiClearDemoSessionPhone() }
+}
+
 @When[target_platform == "android"]
 func clearDemoSessionStorage(): Unit {
     androidDemoSessionStoredPhoneNumber = ""
 }
 
-@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android"]
+@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android" && target_platform != "hos"]
 func writeDemoSessionStorage(phoneNumber: String): Bool {
     AppLog.error("demo session persistence is unavailable on the current target platform")
     return false
 }
 
-@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android"]
+@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android" && target_platform != "hos"]
 func readDemoSessionStorage(): String {
     return ""
 }
 
-@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android"]
+@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android" && target_platform != "hos"]
 func clearDemoSessionStorage(): Unit {
 }
 
@@ -183,14 +204,14 @@ func resolveDemoSessionRestoreState(): String {
     return SESSION_RESTORE_RESTORED
 }
 
-@When[target_platform == "ios" || target_platform == "ios-sim"]
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "hos"]
 foreign func FfiSaveDemoSessionPhone(phoneNumber: CString): Int64
 
-@When[target_platform == "ios" || target_platform == "ios-sim"]
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "hos"]
 foreign func FfiLoadDemoSessionPhone(): CString
 
-@When[target_platform == "ios" || target_platform == "ios-sim"]
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "hos"]
 foreign func FfiClearDemoSessionPhone(): Unit
 
-@When[target_platform == "android" || target_platform == "ios" || target_platform == "ios-sim"]
+@When[target_platform == "android" || target_platform == "ios" || target_platform == "ios-sim" || target_platform == "hos"]
 foreign func FfiFreeString(str: CString): Unit

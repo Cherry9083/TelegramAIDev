@@ -90,5 +90,5 @@ The project should keep comparing those approaches on comparable slices, expose 
 - Support application developers using CJMP.
 - When Cangjie syntax documentation is needed, use `cangjie-lang-features`, `cangjie-original-docs`, `cangjie-regulations`, `cangjie-std`, `cangjie-stdx` skills to retrive related contents.
 - When CJ-UI-related content is needed, use Context7 to retrieve documentation from the `walter-MITTY-PRO/cangjie-corpus` repository.
-- Cangjie toolchain, such as cjc, should be used after run `source $CJMP_SDK_HOME/cjmp-tools/third_party/cangjie-android/envsetup.sh` when you build android apps, or run `source $CJMP_SDK_HOME/cjmp-tools/third_party/cangjie-ios/envsetup.sh` when build ios apps.
+- Cangjie toolchain, such as cjc，cjpm, should be used after run `source $CJMP_SDK_HOME/cjmp-tools/third_party/cangjie-android/envsetup.sh` when you build android apps, or run `source $CJMP_SDK_HOME/cjmp-tools/third_party/cangjie-ios/envsetup.sh` when build ios apps.
 - When CJMP-related context is needed, 

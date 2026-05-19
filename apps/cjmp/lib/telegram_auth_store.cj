@@ -11,6 +11,7 @@ var telegramAuthCurrentApiIdState: String = ""
 var telegramAuthCurrentApiHashState: String = ""
 var telegramAuthCurrentProxyHostState: String = TELEGRAM_DEFAULT_PROXY_HOST
 var telegramAuthCurrentProxyPortState: String = TELEGRAM_DEFAULT_PROXY_PORT
+var telegramAuthCurrentProxyTypeState: String = TELEGRAM_PROXY_TYPE_NONE
 
 func resetTelegramAuthState(): Unit {
     telegramAuthStepState = TELEGRAM_AUTH_STEP_BOOTING
@@ -87,8 +88,11 @@ func setTelegramAuthRuntimeConfig(
     telegramAuthCurrentApiIdState = normalizedApiId
     telegramAuthCurrentApiHashState = normalizedApiHash
     telegramAuthKeepSignedInState = keepSignedIn
-    telegramAuthCurrentProxyHostState = defaultTelegramProxyHost()
-    telegramAuthCurrentProxyPortState = defaultTelegramProxyPort()
+    let proxyHost = defaultTelegramProxyHost()
+    let proxyPort = defaultTelegramProxyPort()
+    telegramAuthCurrentProxyHostState = proxyHost
+    telegramAuthCurrentProxyPortState = proxyPort
+    telegramAuthCurrentProxyTypeState = resolveTelegramProxyType(proxyHost, proxyPort)
     return true
 }
 
@@ -96,8 +100,11 @@ func ensureTelegramAuthRuntimeConfigLoaded(): Unit {
     telegramAuthCurrentApiIdState = loadTelegramApiId()
     telegramAuthCurrentApiHashState = loadTelegramApiHash()
     telegramAuthKeepSignedInState = loadTelegramKeepSignedIn()
-    telegramAuthCurrentProxyHostState = loadTelegramProxyHost()
-    telegramAuthCurrentProxyPortState = loadTelegramProxyPort()
+    let proxyHost = loadTelegramProxyHost()
+    let proxyPort = loadTelegramProxyPort()
+    telegramAuthCurrentProxyHostState = proxyHost
+    telegramAuthCurrentProxyPortState = proxyPort
+    telegramAuthCurrentProxyTypeState = resolveTelegramProxyType(proxyHost, proxyPort)
 }
 
 func consumeTelegramAuthRestoreReady(): Bool {

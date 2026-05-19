@@ -2,10 +2,10 @@ package ohos_app_cangjie_entry
 
 let TDJSON_PHASE0_SUCCESS_PREFIX = "phase0_ok:"
 
-@When[target_platform == "android" || target_platform == "ios" || target_platform == "ios-sim"]
+@When[target_platform == "android" || target_platform == "ios" || target_platform == "ios-sim" || target_platform == "hos"]
 foreign func FfiRunTdjsonPhase0Probe(): CString
 
-@When[target_platform == "android" || target_platform == "ios" || target_platform == "ios-sim"]
+@When[target_platform == "android" || target_platform == "ios" || target_platform == "ios-sim" || target_platform == "hos"]
 func runTdjsonPhase0Probe(): String {
     let result = unsafe { FfiRunTdjsonPhase0Probe() }
     let value = result.toString()
@@ -14,7 +14,7 @@ func runTdjsonPhase0Probe(): String {
     return value
 }
 
-@When[target_platform != "android" && target_platform != "ios" && target_platform != "ios-sim"]
+@When[target_platform != "android" && target_platform != "ios" && target_platform != "ios-sim" && target_platform != "hos"]
 func runTdjsonPhase0Probe(): String {
     return "phase0_skip:unsupported-platform"
 }

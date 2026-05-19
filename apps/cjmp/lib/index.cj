@@ -396,7 +396,8 @@ class EntryView {
                             break
                         }
                         if (waitPolls >= LOGIN_PHONE_SUBMIT_TIMEOUT_POLLS && isTelegramAuthBusy()) {
-                            this.phoneNotice = LOGIN_PHONE_SUBMIT_TIMEOUT_NOTICE
+                            markTelegramPhoneSubmitTimedOut(LOGIN_PHONE_SUBMIT_TIMEOUT_NOTICE)
+                            this.syncLoginStateFromTelegramAuth()
                             this.isSubmittingPhone = false
                             AppLog.info("submitPhoneEntry: phone submit timed out after ${waitPolls} polls")
                             break

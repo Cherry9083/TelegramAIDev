@@ -8,7 +8,7 @@ internal import ohos.base.AppLog
 // ⚠️ 请修改这三个值为你的真实信息
 let TEST_API_ID = ""
 let TEST_API_HASH = ""
-let TEST_PHONE_NUMBER = ""
+let TEST_PHONE_NUMBER = "+"
 
 // 快速测试函数
 public func quickTestTelegramConnection(): Bool {

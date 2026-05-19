@@ -55,23 +55,44 @@ func buildTelegramTdGetOptionRequest(name: String): String {
     return root.toString()
 }
 
-func buildTelegramTdAddSocks5ProxyRequest(host: String, port: String): String {
+func buildTelegramTdProxyType(proxyTypeName: String): JsonObject {
     let proxyType = JsonObject()
+    if (proxyTypeName == TELEGRAM_PROXY_TYPE_HTTP) {
+        proxyType.put("@type", JsonString("proxyTypeHttp"))
+        proxyType.put("username", JsonString(""))
+        proxyType.put("password", JsonString(""))
+        proxyType.put("http_only", JsonBool(false))
+        return proxyType
+    }
     proxyType.put("@type", JsonString("proxyTypeSocks5"))
     proxyType.put("username", JsonString(""))
     proxyType.put("password", JsonString(""))
+    return proxyType
+}
+
+func buildTelegramTdAddProxyRequest(host: String, port: String, proxyType: String): String {
+    let proxyTypeObject = buildTelegramTdProxyType(proxyType)
 
     let proxy = JsonObject()
     proxy.put("@type", JsonString("proxy"))
     proxy.put("server", JsonString(normalizeTelegramProxyHost(host)))
     proxy.put("port", JsonInt(parseTelegramProxyPort(port)))
-    proxy.put("type", proxyType)
+    proxy.put("type", proxyTypeObject)
 
     let root = buildTelegramTdRequestWithExtra("addProxy", "bootstrap-proxy")
     root.put("proxy", proxy)
     root.put("enable", JsonBool(true))
-    root.put("comment", JsonString("local socks5"))
+    let proxyComment = if (proxyType == TELEGRAM_PROXY_TYPE_HTTP) {
+        "system http"
+    } else {
+        "local socks5"
+    }
+    root.put("comment", JsonString(proxyComment))
     return root.toString()
+}
+
+func buildTelegramTdAddSocks5ProxyRequest(host: String, port: String): String {
+    return buildTelegramTdAddProxyRequest(host, port, TELEGRAM_PROXY_TYPE_SOCKS5)
 }
 
 func buildTelegramTdSetParametersRequest(apiId: String, apiHash: String): String {
@@ -945,7 +966,8 @@ func redactedTelegramRawJson(rawJson: String): String {
 }
 
 func isTelegramAuthProxyConfigured(): Bool {
-    return !normalizeTelegramProxyHost(telegramAuthCurrentProxyHostState).isEmpty()
+    return telegramAuthCurrentProxyTypeState != TELEGRAM_PROXY_TYPE_NONE &&
+        !normalizeTelegramProxyHost(telegramAuthCurrentProxyHostState).isEmpty()
 }
 
 func isTelegramAuthProxyReady(): Bool {
@@ -970,11 +992,12 @@ func submitTelegramBootstrapRequests(): Bool {
         return false
     }
     if (isTelegramAuthProxyConfigured()) {
-        let proxyRequest = buildTelegramTdAddSocks5ProxyRequest(
+        let proxyRequest = buildTelegramTdAddProxyRequest(
             telegramAuthCurrentProxyHostState,
-            telegramAuthCurrentProxyPortState
+            telegramAuthCurrentProxyPortState,
+            telegramAuthCurrentProxyTypeState
         )
-        AppLog.info("telegram auth: sending addProxy to ${telegramAuthCurrentProxyHostState}:${telegramAuthCurrentProxyPortState}")
+        AppLog.info("telegram auth: sending addProxy type=${telegramAuthCurrentProxyTypeState} to ${telegramAuthCurrentProxyHostState}:${telegramAuthCurrentProxyPortState}")
         if (!sendTelegramTdRequest(telegramAuthClientHandle, proxyRequest)) {
             telegramAuthStepState = TELEGRAM_AUTH_STEP_FAILED
             telegramAuthNoticeState = "Failed to prepare the Telegram connection."
@@ -1390,6 +1413,13 @@ func submitTelegramPhoneNumber(phoneNumber: String): Bool {
     AppLog.info("submitTelegramPhoneNumber: request sent successfully, waiting for TDLib response")
     AppLog.info("submitTelegramPhoneNumber: polling should pick up authorizationStateWaitCode next")
     return true
+}
+
+func markTelegramPhoneSubmitTimedOut(notice: String): Unit {
+    telegramAuthSubmitInFlight = false
+    telegramAuthNoticeState = notice
+    telegramAuthConnectionNoticeState = ""
+    AppLog.info("submitTelegramPhoneNumber: timed out waiting for TDLib response; submit state reset")
 }
 
 func submitTelegramVerificationCode(code: String): Bool {

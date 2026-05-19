@@ -11,11 +11,14 @@ WORK_ROOT="$BUILD_ROOT/work"
 ARTIFACT_ROOT="$BUILD_ROOT"
 ANDROID_OPENSSL_ROOT_FOR_TDLIB=""
 IOS_OPENSSL_ROOT_FOR_TDLIB=""
+OHOS_OPENSSL_ROOT_FOR_TDLIB=""
 OPENSSL_VERSION="${OPENSSL_VERSION:-OpenSSL_1_1_1w}"
 OPENSSL_SOURCE_VERSION="${OPENSSL_SOURCE_VERSION:-1.1.1w}"
 OPENSSL_SOURCE_DIR="${OPENSSL_SOURCE_DIR:-}"
 OPENSSL_ANDROID_ROOT="${OPENSSL_ANDROID_ROOT:-}"
 OPENSSL_IOS_ROOT="${OPENSSL_IOS_ROOT:-}"
+OHOS_OPENSSL_ROOT="${OHOS_OPENSSL_ROOT:-$REPO_DIR/third_party/ohos-openssl/prelude/arm64-v8a}"
+OHOS_TDLIB_PREBUILT_ROOT="${OHOS_TDLIB_PREBUILT_ROOT:-$REPO_DIR/third_party/tdlib-prebuilt/ohos/arm64-v8a}"
 ALLOW_GITHUB_OPENSSL_FETCH="${ALLOW_GITHUB_OPENSSL_FETCH:-0}"
 CJMP_THIRD_PARTY_OPENSSL_DIR="${CJMP_THIRD_PARTY_OPENSSL_DIR:-${CJMP_SDK_HOME:-}/cjmp-tools/third_party/openssl}"
 ANDROID_NDK_VERSION="${ANDROID_NDK_VERSION:-26.3.11579264}"
@@ -23,6 +26,16 @@ ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}"
 ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION"
 IOS_SIMULATOR_SDK="${IOS_SIMULATOR_SDK:-$(xcrun --sdk iphonesimulator --show-sdk-path)}"
 JOBS="${JOBS:-4}"
+
+if [[ -z "${OHOS_NATIVE_HOME:-}" ]]; then
+    if [[ -n "${DEVECO_OH_NATIVE_HOME:-}" ]]; then
+        OHOS_NATIVE_HOME="$DEVECO_OH_NATIVE_HOME"
+    elif [[ -n "${DEVECO_SDK_HOME:-}" ]]; then
+        OHOS_NATIVE_HOME="$DEVECO_SDK_HOME/default/openharmony/native"
+    else
+        OHOS_NATIVE_HOME=""
+    fi
+fi
 
 export PATH="/opt/homebrew/opt/cmake/bin:/opt/homebrew/opt/ninja/bin:/opt/homebrew/opt/php/bin:$PATH"
 
@@ -48,6 +61,14 @@ require_tool() {
     fi
 }
 
+require_file() {
+    local file="$1"
+    if [[ ! -f "$file" ]]; then
+        echo "error: required file not found: $file" >&2
+        exit 1
+    fi
+}
+
 find_android_host_tag() {
     local candidate
     for candidate in darwin-x86_64 darwin-arm64; do
@@ -61,8 +82,6 @@ find_android_host_tag() {
 
 prepare_common_environment() {
     require_dir "$TD_SOURCE_DIR"
-    require_dir "$ANDROID_SDK_ROOT"
-    require_dir "$ANDROID_NDK_ROOT"
     require_tool cmake
     require_tool ninja
     require_tool php
@@ -75,6 +94,18 @@ prepare_common_environment() {
     require_tool javadoc
     require_tool jar
     mkdir -p "$WORK_ROOT"
+}
+
+prepare_android_environment() {
+    require_dir "$ANDROID_SDK_ROOT"
+    require_dir "$ANDROID_NDK_ROOT"
+}
+
+prepare_ohos_environment() {
+    require_dir "$OHOS_NATIVE_HOME"
+    require_file "$OHOS_NATIVE_HOME/build/cmake/ohos.toolchain.cmake"
+    require_file "$OHOS_NATIVE_HOME/llvm/bin/llvm-ar"
+    require_file "$OHOS_NATIVE_HOME/llvm/bin/llvm-readelf"
 }
 
 normalize_android_openssl_artifacts() {
@@ -199,6 +230,14 @@ is_ios_device_openssl_root() {
     [[ -f "$candidate/include/openssl/ssl.h" || -f "$candidate/include/openssl/opensslv.h" ]]
 }
 
+is_ohos_openssl_root() {
+    local candidate="$1"
+    [[ -n "$candidate" ]] || return 1
+    [[ -f "$candidate/lib/libcrypto.a" ]] || return 1
+    [[ -f "$candidate/lib/libssl.a" ]] || return 1
+    [[ -f "$candidate/include/openssl/ssl.h" || -f "$candidate/include/openssl/opensslv.h" ]]
+}
+
 android_openssl_lib_dir() {
     local candidate="$1"
     if [[ -f "$candidate/lib/libcrypto.a" && -f "$candidate/lib/libssl.a" ]]; then
@@ -270,6 +309,36 @@ ios_static_library_is_iphoneos_arm64() {
     return 1
 }
 
+ohos_static_library_is_arm64() {
+    local library="$1"
+    local ar_tool="$OHOS_NATIVE_HOME/llvm/bin/llvm-ar"
+    local readelf_tool="$OHOS_NATIVE_HOME/llvm/bin/llvm-readelf"
+    local temp_dir
+    local member
+    local object_path
+    local inspected=0
+
+    [[ -f "$ar_tool" && -f "$readelf_tool" ]] || return 1
+    temp_dir=$(mktemp -d)
+
+    while IFS= read -r member; do
+        [[ -n "$member" ]] || continue
+        object_path="$temp_dir/member.o"
+        if "$ar_tool" p "$library" "$member" > "$object_path" 2>/dev/null &&
+            "$readelf_tool" -h "$object_path" 2>/dev/null | grep -q "Machine:.*AArch64"; then
+            rm -rf "$temp_dir"
+            return 0
+        fi
+        inspected=$((inspected + 1))
+        if [[ "$inspected" -ge 50 ]]; then
+            break
+        fi
+    done < <("$ar_tool" t "$library")
+
+    rm -rf "$temp_dir"
+    return 1
+}
+
 require_android_openssl_arm64() {
     local root="$1"
     local host_tag="$2"
@@ -298,6 +367,23 @@ require_ios_device_openssl_arm64() {
     fi
     if ! ios_static_library_is_iphoneos_arm64 "$root/lib/libssl.a"; then
         echo "error: $root/lib/libssl.a is not an iPhoneOS arm64 static library" >&2
+        exit 1
+    fi
+}
+
+require_ohos_openssl_arm64() {
+    local root="$1"
+
+    if ! is_ohos_openssl_root "$root"; then
+        echo "error: OHOS OpenSSL root is missing libssl.a/libcrypto.a or headers: $root" >&2
+        exit 1
+    fi
+    if ! ohos_static_library_is_arm64 "$root/lib/libcrypto.a"; then
+        echo "error: $root/lib/libcrypto.a is not an OHOS arm64 static library" >&2
+        exit 1
+    fi
+    if ! ohos_static_library_is_arm64 "$root/lib/libssl.a"; then
+        echo "error: $root/lib/libssl.a is not an OHOS arm64 static library" >&2
         exit 1
     fi
 }
@@ -335,6 +421,24 @@ find_ios_device_openssl_root() {
 
     for candidate in "${candidates[@]}"; do
         if is_ios_device_openssl_root "$candidate"; then
+            echo "$candidate"
+            return
+        fi
+    done
+}
+
+find_ohos_openssl_root() {
+    local candidate
+    local candidates=(
+        "$OHOS_OPENSSL_ROOT"
+        "$REPO_DIR/third_party/ohos-openssl/prelude/arm64-v8a"
+        "$ARTIFACT_ROOT/ohos/openssl/arm64-v8a"
+        "$CJMP_THIRD_PARTY_OPENSSL_DIR/ohos/arm64-v8a"
+        "$CJMP_THIRD_PARTY_OPENSSL_DIR/ohos_aarch64_cjnative"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if is_ohos_openssl_root "$candidate"; then
             echo "$candidate"
             return
         fi
@@ -619,6 +723,157 @@ build_ios_device_tdjson() {
     install_name_tool -id @rpath/libtdjson.dylib "$out_dir/libtdjson.dylib"
 }
 
+build_ohos_openssl() {
+    local out_dir="$ARTIFACT_ROOT/ohos/openssl/arm64-v8a"
+    local openssl_root
+
+    if is_ohos_openssl_root "$out_dir"; then
+        OHOS_OPENSSL_ROOT_FOR_TDLIB="$out_dir"
+        return
+    fi
+
+    openssl_root=$(find_ohos_openssl_root)
+    if [[ -z "$openssl_root" ]]; then
+        echo "error: failed to locate OHOS OpenSSL artifacts. Set OHOS_OPENSSL_ROOT to a root containing lib/libssl.a, lib/libcrypto.a, and include/openssl." >&2
+        exit 1
+    fi
+
+    require_ohos_openssl_arm64 "$openssl_root"
+    echo "Using OHOS OpenSSL artifacts from $openssl_root"
+    OHOS_OPENSSL_ROOT_FOR_TDLIB="$openssl_root"
+}
+
+strip_ohos_shared_library() {
+    local library_path="$1"
+    local strip_tool="$OHOS_NATIVE_HOME/llvm/bin/llvm-strip"
+
+    if [[ -f "$strip_tool" && -f "$library_path" ]]; then
+        "$strip_tool" --strip-unneeded "$library_path"
+    fi
+}
+
+ohos_tdjson_has_packaged_soname() {
+    local library_path="$1"
+    local readelf_tool="$OHOS_NATIVE_HOME/llvm/bin/llvm-readelf"
+    local dynamic_section
+
+    [[ -f "$library_path" && -f "$readelf_tool" ]] || return 1
+    dynamic_section=$("$readelf_tool" -d "$library_path")
+    [[ "$dynamic_section" == *"Library soname: [libtdjson.so]"* ]]
+}
+
+ohos_shared_library_is_arm64() {
+    local library_path="$1"
+    local readelf_tool="$OHOS_NATIVE_HOME/llvm/bin/llvm-readelf"
+    local elf_header
+
+    [[ -f "$library_path" && -f "$readelf_tool" ]] || return 1
+    elf_header=$("$readelf_tool" -h "$library_path")
+    [[ "$elf_header" == *"Machine:"*"AArch64"* ]]
+}
+
+stage_ohos_prebuilt_tdjson() {
+    local prebuilt_path="$OHOS_TDLIB_PREBUILT_ROOT/libtdjson.so"
+    local out_dir="$ARTIFACT_ROOT/ohos/arm64-v8a"
+
+    [[ -f "$prebuilt_path" ]] || return 1
+    if ! ohos_shared_library_is_arm64 "$prebuilt_path"; then
+        echo "error: OHOS TDLib prebuilt is not an AArch64 shared library: $prebuilt_path" >&2
+        exit 1
+    fi
+    if ! ohos_tdjson_has_packaged_soname "$prebuilt_path"; then
+        echo "error: OHOS TDLib prebuilt must use SONAME libtdjson.so for HAP packaging: $prebuilt_path" >&2
+        exit 1
+    fi
+
+    echo "Using OHOS TDLib prebuilt from $prebuilt_path"
+    rm -rf "$out_dir"
+    mkdir -p "$out_dir"
+    cp "$prebuilt_path" "$out_dir/libtdjson.so"
+    strip_ohos_shared_library "$out_dir/libtdjson.so"
+    return 0
+}
+
+persist_ohos_tdjson_prebuilt() {
+    local tdjson_path="$ARTIFACT_ROOT/ohos/arm64-v8a/libtdjson.so"
+
+    require_file "$tdjson_path"
+    if ! ohos_shared_library_is_arm64 "$tdjson_path"; then
+        echo "error: generated OHOS libtdjson.so is not AArch64: $tdjson_path" >&2
+        exit 1
+    fi
+    if ! ohos_tdjson_has_packaged_soname "$tdjson_path"; then
+        echo "error: generated OHOS libtdjson.so does not use SONAME libtdjson.so" >&2
+        exit 1
+    fi
+    mkdir -p "$OHOS_TDLIB_PREBUILT_ROOT"
+    cp "$tdjson_path" "$OHOS_TDLIB_PREBUILT_ROOT/libtdjson.so"
+}
+
+stage_ohos_hap_libraries() {
+    local tdjson_path="$ARTIFACT_ROOT/ohos/arm64-v8a/libtdjson.so"
+    local hap_lib_dir="$APP_DIR/hos/entry/src/main/libs/arm64-v8a"
+    local libcxx_path="$OHOS_NATIVE_HOME/llvm/lib/aarch64-linux-ohos/c++/libc++_shared.so"
+
+    require_file "$tdjson_path"
+    mkdir -p "$hap_lib_dir"
+    cp "$tdjson_path" "$hap_lib_dir/libtdjson.so"
+    if [[ -f "$libcxx_path" ]]; then
+        cp "$libcxx_path" "$hap_lib_dir/libc++_shared.so"
+    fi
+}
+
+build_ohos_tdjson() {
+    local build_dir="$WORK_ROOT/td-ohos-arm64"
+    local openssl_dir="${OHOS_OPENSSL_ROOT_FOR_TDLIB:-$ARTIFACT_ROOT/ohos/openssl/arm64-v8a}"
+    local out_dir="$ARTIFACT_ROOT/ohos/arm64-v8a"
+    local lib_path
+    local ninja_path
+
+    if [[ -f "$out_dir/libtdjson.so" ]]; then
+        echo "OHOS libtdjson.so already exists, skipping build"
+        strip_ohos_shared_library "$out_dir/libtdjson.so"
+        return
+    fi
+
+    if [[ -x "$OHOS_NATIVE_HOME/build-tools/cmake/bin/ninja" ]]; then
+        ninja_path="$OHOS_NATIVE_HOME/build-tools/cmake/bin/ninja"
+    else
+        ninja_path="$(command -v ninja)"
+    fi
+
+    rm -rf "$build_dir"
+    cmake \
+        -S "$TD_SOURCE_DIR" \
+        -B "$build_dir" \
+        -GNinja \
+        -DCMAKE_MAKE_PROGRAM="$ninja_path" \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DCMAKE_TOOLCHAIN_FILE="$OHOS_NATIVE_HOME/build/cmake/ohos.toolchain.cmake" \
+        -DOHOS_ARCH=arm64-v8a \
+        -DOHOS_STL=c++_shared \
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+        -DOPENSSL_FOUND=1 \
+        -DOPENSSL_USE_STATIC_LIBS=TRUE \
+        -DOPENSSL_ROOT_DIR="$openssl_dir" \
+        -DOPENSSL_CRYPTO_LIBRARY="$openssl_dir/lib/libcrypto.a" \
+        -DOPENSSL_SSL_LIBRARY="$openssl_dir/lib/libssl.a" \
+        -DOPENSSL_INCLUDE_DIR="$openssl_dir/include" \
+        -DOPENSSL_LIBRARIES="$openssl_dir/lib/libcrypto.a;$openssl_dir/lib/libssl.a"
+    cmake --build "$build_dir" --target tdjson --parallel "$JOBS"
+
+    lib_path=$(find "$build_dir" -name libtdjson.so | head -n 1)
+    if [[ -z "$lib_path" ]]; then
+        echo "error: failed to locate OHOS libtdjson.so" >&2
+        exit 1
+    fi
+
+    rm -rf "$out_dir"
+    mkdir -p "$out_dir"
+    cp "$lib_path" "$out_dir/libtdjson.so"
+    strip_ohos_shared_library "$out_dir/libtdjson.so"
+}
+
 build_android_target() {
     local host_tag="$1"
     local out_dir="$ARTIFACT_ROOT/android/arm64-v8a"
@@ -662,19 +917,48 @@ build_ios_device_target() {
     build_ios_device_tdjson
 }
 
+build_ohos_target() {
+    local out_dir="$ARTIFACT_ROOT/ohos/arm64-v8a"
+
+    prepare_ohos_environment
+    if [[ -f "$out_dir/libtdjson.so" ]]; then
+        if ! ohos_tdjson_has_packaged_soname "$out_dir/libtdjson.so"; then
+            echo "OHOS libtdjson.so has a versioned SONAME, rebuilding for HAP packaging"
+            rm -rf "$out_dir" "$WORK_ROOT/td-ohos-arm64"
+        else
+            echo "OHOS libtdjson.so already exists, skipping TDLib build"
+            strip_ohos_shared_library "$out_dir/libtdjson.so"
+            stage_ohos_hap_libraries
+            return
+        fi
+    fi
+
+    if stage_ohos_prebuilt_tdjson; then
+        stage_ohos_hap_libraries
+        return
+    fi
+
+    build_ohos_openssl
+    prepare_td_generated_sources
+    build_ohos_tdjson
+    persist_ohos_tdjson_prebuilt
+    stage_ohos_hap_libraries
+}
+
 main() {
-    local host_tag
+    local host_tag=""
 
     prepare_common_environment
-    host_tag=$(find_android_host_tag)
-    if [[ "$host_tag" == "error" ]]; then
-        echo "error: failed to locate an Android NDK host prebuilt directory" >&2
-        exit 1
-    fi
 
     for target in "${TARGETS[@]}"; do
         case "$target" in
             android)
+                prepare_android_environment
+                host_tag=$(find_android_host_tag)
+                if [[ "$host_tag" == "error" ]]; then
+                    echo "error: failed to locate an Android NDK host prebuilt directory" >&2
+                    exit 1
+                fi
                 build_android_target "$host_tag"
                 ;;
             ios-sim)
@@ -683,13 +967,23 @@ main() {
             ios)
                 build_ios_device_target
                 ;;
+            ohos)
+                build_ohos_target
+                ;;
             all)
+                prepare_android_environment
+                host_tag=$(find_android_host_tag)
+                if [[ "$host_tag" == "error" ]]; then
+                    echo "error: failed to locate an Android NDK host prebuilt directory" >&2
+                    exit 1
+                fi
                 build_android_target "$host_tag"
                 build_ios_simulator_target
                 build_ios_device_target
+                build_ohos_target
                 ;;
             *)
-                echo "error: unsupported target '$target' (expected: android, ios, ios-sim, all)" >&2
+                echo "error: unsupported target '$target' (expected: android, ios, ios-sim, ohos, all)" >&2
                 exit 1
                 ;;
         esac

@@ -16,6 +16,44 @@ Each round entry should include:
 - AI-efficiency friction summary, or `no confirmed friction in this round`
 - 
 
+## 2026-05-09 Round L
+
+- timestamp: `2026-05-09T03:12:44Z` to `2026-05-09T04:01:32Z`
+- framework lane: `CJMP`
+- work item type and issue reference: `requirement`, `telegram-tdlib-backend-integration`
+- concise working effort summary:
+  - integrated the verified TDLib SOCKS5 proxy authorization sequence from `/Users/user/Desktop/project/connectTelegram/doc/telegram_tdlib_cangjie_proxy_design.md` into the CJMP Telegram login path
+  - added runtime proxy config (`proxy_host` / `proxy_port`) alongside `api_id` / `api_hash`, with simulator-friendly `127.0.0.1:7897` and Android-emulator-friendly `10.0.2.2:7897` defaults
+  - moved TDLib bootstrap behind the user's Continue action, sent `getOption("version")` after client creation, added `addProxy(enable=true)` before `setTdlibParameters`, handled `addedProxy`, `authorizationStateWaitEncryptionKey`, restored `authorizationStateWaitCode`, password, ready, close, and TDLib errors
+  - added app-private TDLib directory resolution for iOS through `FfiGetApplicationFilesDir`, and tightened Android/iOS TDLib logging so phone, code, password, API hash, and encryption-key payloads are redacted
+  - exposed proxy host/port fields on the login UI and kept TDLib startup in a background task so the UI does not block while waiting for authorization state
+- total duration: `48m 48s`
+- internal step duration:
+  - `analysis`: `11m 23s`
+  - `implementation`: `6m 31s`
+  - `validation`: `0s` (step was recorded late; validation activity happened before the metrics boundary was opened)
+- token consumption: `total=20229504, input=20149918, cached_input=19284224, output=79586, reasoning_output=43698`
+- validation completed in the round:
+  - `source "$CJMP_SDK_HOME/cjmp-tools/third_party/cangjie-ios/envsetup.sh" && ./build.sh debug ios-sim off` passed
+  - `source "$CJMP_SDK_HOME/cjmp-tools/third_party/cangjie-ios/envsetup.sh" && ./build.sh debug ios off` passed
+  - `source "$CJMP_SDK_HOME/cjmp-tools/third_party/cangjie-android/envsetup.sh" && bash build.sh debug android off` passed
+  - `xcodebuild -project ios/cjmp.xcodeproj -scheme cjmp -configuration Debug -destination 'id=00008140-000408510A02801C' build` passed for `Cen的iPhone`
+  - `xcrun devicectl device install app --device 00008140-000408510A02801C .../Debug-iphoneos/cjmp.app` installed `com.example.cjmp`
+  - `xcrun devicectl device process launch --device 00008140-000408510A02801C --terminate-existing --console com.example.cjmp` stayed running for more than 15 seconds and did not reproduce the earlier startup `SIGSEGV`; the final `signal 2` was caused by manually interrupting the attached console
+  - after refreshing simulator frameworks, `xcodebuild -project ios/cjmp.xcodeproj -scheme cjmp -configuration Debug -destination 'id=16017B09-D686-4207-A624-9CA58C899EE7' -derivedDataPath /tmp/cjmp-dd-sim build` passed
+  - `xcrun simctl install ... /tmp/cjmp-dd-sim/Build/Products/Debug-iphonesimulator/cjmp.app` and `xcrun simctl launch ... com.example.cjmp` passed
+  - `xcrun simctl io ... screenshot /tmp/cjmp-sim-login-final.png` captured the login UI with API ID, API hash, proxy host, proxy port, keep-signed-in, and Continue controls visible
+  - `./gradlew assembleDebug -x app:buildCangjieResourcesDebug` passed after the native logging redaction patch
+- parity impact / delivery status / notable workaround:
+  - CJMP now has a TDLib backend login path that matches the verified proxy design, including explicit TDLib SOCKS5 setup rather than relying on system VPN/global proxy behavior
+  - full end-to-end authorization through verification-code entry was not completed in this agent run because the environment had no `TG_API_ID`, `TG_API_HASH`, or `TG_PHONE`, and the user-entered SMS code cannot be inferred safely
+  - real-device proxy validation needs a proxy host reachable from the iPhone; `127.0.0.1:7897` works for the iOS simulator and local Mac verification, while a physical iPhone usually needs a LAN/Tailscale host address or a device-local proxy
+  - Android emulator runtime validation was blocked because no AVD was installed; `sdkmanager "system-images;android-34;google_apis;arm64-v8a"` made no observable progress and was stopped
+- AI-efficiency friction summary:
+  - confirmed CJMP delivery friction: iOS device and simulator builds share `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/ios/frameworks`, so switching targets overwrites staged runtime frameworks and can make simulator Xcode builds link against iPhoneOS artifacts
+  - durable evidence recorded in `/Users/user/Desktop/project/TelegramAIDev/reports/cjmp-issues/2026-05-09-ios-frameworks-architecture-staging.md`
+  - GitHub issue creation was attempted but blocked because repository issues are disabled
+
 ## 2026-05-06 Round K
 
 - timestamp: `2026-05-06T04:54:23Z` to `2026-05-06T05:54:xxZ`
@@ -323,3 +361,111 @@ Each round entry should include:
   - notable workaround: search still operates only on the local seeded contact set in the current `CJMP` lane; no cross-device sync or native contacts integration was introduced in this round
 - AI-efficiency friction summary:
   - no confirmed AI-efficiency friction in this round
+
+## 2026-05-09 Round K
+
+- timestamp: `2026-05-09T04:47:24Z` to `2026-05-09T05:16:27Z`
+- framework lane: `CJMP`
+- work item type and issue reference: `bug-fix`, `android-telegram-backend-emulator-proxy-removal`
+- concise working effort summary:
+  - removed user-facing Telegram proxy configuration from the CJMP login flow and runtime config persistence
+  - aligned `setAuthenticationPhoneNumber` with the verified minimal TDLib sample by sending only `@type` and `phone_number`
+  - added Android-emulator-only internal TDLib relay detection so `Pixel_8a` can reuse the host `10.0.2.2:7897` path while physical devices keep direct default behavior
+  - generalized user-visible connection notices so proxy wording does not appear in the app
+- total duration: `29m 3s`
+- internal step duration:
+  - `analysis`: `1m 3s`
+  - `implementation`: `1m 46s`
+  - `build-deploy`: `9m 38s`
+  - `phone-request-fix`: `2m 12s`
+  - `emulator-validation`: `8m 35s`
+- token consumption: `total=9623439, input=9573148, cached_input=8781440, output=50291, reasoning_output=26522`
+- validation completed in the round:
+  - `source "$CJMP_SDK_HOME/cjmp-tools/third_party/cangjie-android/envsetup.sh" && ./gradlew assembleDebug` passed after the final code changes
+  - final APK installed and launched on Android emulator `Pixel_8a`
+  - direct/no-proxy test reached Telegram backend options and `authorizationStateWaitPhoneNumber`, but did not reach code state within 120 seconds
+  - final emulator-only relay run reached `connectionStateReady` and `current step=waiting_code`; screenshot `.cache/android-acceptance/final-verification-code-page.png` shows the `Verification Code` page
+  - persisted `telegramTdRuntimeConfig.json` contains only `api_hash,api_id,keep_signed_in`, with no `proxy_host` or `proxy_port`
+- parity impact / delivery status / notable workaround:
+  - the CJMP Android emulator now matches the already-validated minimal TDLib network path without exposing proxy controls in the product UI
+  - physical-device behavior remains direct by default because the internal relay is gated on Android emulator detection
+  - notable workaround: Android acceptance still needed coordinate taps because CJMP controls were not discoverable through the `uiautomator` hierarchy
+- AI-efficiency friction summary:
+  - confirmed CJMP acceptance friction: Android UI hierarchy exposure is too shallow for semantic automation, forcing coordinate-based login form input and screenshot/logcat evidence
+  - durable evidence recorded in `/Users/user/Desktop/project/TelegramAIDev/reports/cjmp-issues/2026-05-09-android-ui-hierarchy-coordinate-acceptance.md`
+
+## 2026-05-10 Round M
+
+- timestamp: `2026-05-10T15:52:43Z` to `2026-05-10T17:22:10Z`
+- framework lane: `CJMP`
+- work item type and issue reference: `requirement`, `telegram-real-chat-send-pages`
+- concise working effort summary:
+  - added TDLib-backed state stores for Telegram settings, contacts, and message-send status in `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/lib/telegram_settings_store.cj`, `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/lib/telegram_contact_store.cj`, and `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/lib/telegram_message_send_store.cj`
+  - extended `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/lib/telegram_tdlib_facade.cj` with `getMe`, `createPrivateChat`, `getContacts`, `getUser`, and `sendMessage` requests plus response handling for real chat/profile/contact/send state
+  - updated `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/lib/index.cj` so a persisted ready Telegram session restores into `HomeShellPage` instead of leaving the user on the login page
+  - updated `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/lib/home_shell_page.cj` so Chats uses the real TDLib chat list, adds a Saved Messages entry, Contacts shows true loading/empty/error/populated states, and Settings shows the real Telegram profile/session state
+  - updated `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/lib/chat_detail_page.cj` so a real TDLib chat detail can send composer text through `sendMessage` and show pending/sent/error status in the chat UI
+- total duration: `1h 29m 27s`
+- internal step duration:
+  - `read-anchor`: `4m 36s`
+  - `implementation`: `40m 47s`
+  - `android-build`: `3m 34s`
+  - `android-acceptance`: `40m 19s`
+- token consumption: `total=20140881, input=20064103, cached_input=19106304, output=76778, reasoning_output=38631`
+- validation completed in the round:
+  - `source "$CJMP_SDK_HOME/cjmp-tools/third_party/cangjie-android/envsetup.sh" && bash build.sh debug android off` passed in `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp`
+  - `./gradlew assembleDebug -x app:buildCangjieResourcesDebug` passed in `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/android`
+  - final APK installed and launched on Android emulator `Pixel_8a`, serial `emulator-5554`, preserving the real Telegram TDLib session
+  - real-session restore entered `HomeShellPage`; screenshot `.cache/android-acceptance/cjmp-redeploy-home-restore.png` shows the TDLib chat list with the newly sent message as a real last-message preview
+  - real message send from the CJMP chat UI used text `CJMP-real-send-20260511-010727`; logcat showed `sendMessage`, `updateNewMessage`, and `updateMessageSendSucceeded` for that text
+  - after rebuilding and reinstalling the final APK, a second real send used text `CJMP-final-apk-send-20260511-0121`; logcat again showed `sendMessage`, `updateNewMessage`, and `updateMessageSendSucceeded`
+  - screenshots `.cache/android-acceptance/cjmp-message-send-succeeded.png` and `.cache/android-acceptance/cjmp-final-apk-send-after-wait.png` show the messages rendered in the chat UI with sent status after TDLib accepted them
+  - screenshot `.cache/android-acceptance/cjmp-contacts-empty-state-fixed.png` shows the Contacts tab with the real no-synced-contacts state for this account
+  - screenshot `.cache/android-acceptance/cjmp-settings-final-apk.png` shows the Settings tab with the real Telegram profile and active TDLib session state
+- parity impact / delivery status / notable workaround:
+  - the CJMP Android lane now has a credible real Telegram demo path beyond login: restored session, real chat list, real profile settings, contacts state, and a real message send through TDLib
+  - the final send target used Saved Messages/self chat, so the message should sync to the user's other Telegram devices attached to the same account; this round can prove TDLib acceptance from the emulator but cannot directly inspect the user's separate Telegram device
+  - notable limitation: after a redeploy, ChatDetail still renders the local demo transcript rather than fetching Telegram message history; the Home list and logcat prove the real last message, and live send within the detail page shows local sent status
+  - notable workaround: Android acceptance still used coordinate taps because the CJMP Android surface remains shallow to `uiautomator`
+- AI-efficiency friction summary:
+  - confirmed existing CJMP acceptance friction: Android UI hierarchy exposure still forced coordinate-driven taps and screenshot/logcat evidence; this maps to `/Users/user/Desktop/project/TelegramAIDev/reports/cjmp-issues/2026-05-09-android-ui-hierarchy-coordinate-acceptance.md`
+  - confirmed new CJMP routing friction: a background TDLib restore path could reach `authorizationStateReady` but could not `Router.push` until navigation was deferred to a UI lifecycle callback with a current container
+  - durable evidence recorded in `/Users/user/Desktop/project/TelegramAIDev/reports/cjmp-issues/2026-05-10-router-background-push-no-container.md`; GitHub issue creation was blocked because the repository currently has Issues disabled
+
+## 2026-05-11 Round N
+
+- timestamp: `2026-05-11T01:42:12Z` to `2026-05-11T03:03:35Z`
+- framework lane: `CJMP`
+- work item type and issue reference: `bug-fix`, `telegram-inbound-and-tdjson-apk`
+- concise working effort summary:
+  - made Android TDLib packaging mandatory in `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/build.sh` so missing `libtdjson.so` now fails the build instead of producing a broken APK
+  - extended `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/scripts/build_tdlib_phase0.sh` so Android builds generate a stripped ARM64 `libtdjson.so` using Android ABI OpenSSL static libraries
+  - added `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/lib/telegram_chat_message_store.cj` for real chat history/message rows
+  - extended `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/lib/telegram_tdlib_facade.cj` with `getChatHistory`, `updateNewMessage`, and `updateMessageSendSucceeded` handling
+  - updated `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/lib/chat_detail_page.cj` so real chat detail pages load TDLib history and send messages through TDLib without duplicate local demo bubbles
+- total duration: `1h 21m 23s`
+- internal step duration:
+  - `implementation`: `8m 58s`
+  - `build`: `19m 13s`
+  - `apk-build`: `2m 56s`
+  - `emulator-verification`: `50m 16s`
+- token consumption: `total=20336702, input=20270883, cached_input=19171584, output=65819, reasoning_output=26239`
+- validation completed in the round:
+  - `source "$CJMP_SDK_HOME/cjmp-tools/third_party/cangjie-android/envsetup.sh" && bash build.sh debug android off` passed in `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp`
+  - `./gradlew assembleDebug -x app:buildCangjieResourcesDebug` passed in `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/android`
+  - forced final `./gradlew :app:packageDebug --rerun-tasks` produced `/Users/user/Desktop/project/TelegramAIDev/apps/cjmp/android/app/build/outputs/apk/debug/app-debug.apk`
+  - final APK contains `lib/arm64-v8a/libtdjson.so`, `lib/arm64-v8a/libc++_shared.so`, `lib/arm64-v8a/libjnicjmp.so`, and `lib/arm64-v8a/libohos_app_cangjie_entry.so`
+  - `apps/cjmp/build/tdlib-phase0/android/arm64-v8a/libtdjson.so` is an ARM64 Android ELF shared object and stripped
+  - final APK installed successfully on Android emulator `emulator-5554` and physical device `23E0223B28002653`
+  - physical-device log after final install showed TDLib JNI polling/sending with `handle=1`; `failed to dlopen`, `client handle = 0`, and `FAILED to create client` count was `0`
+  - emulator chat detail for `Ming Xiang` issued `getChatHistory` for chat `8688672202`, received TDLib history text `hello`, and rendered it in the chat UI
+  - emulator live send used text `CJMP third live send 20260511-1047`; logcat showed `sendMessage`, `updateNewMessage`, and `updateMessageSendSucceeded` with old message id replacement
+  - screenshot `.cache/cjmp-verification/emulator-detail-after-third-live-send.png` shows the real message rendered once with `Sent`, with no duplicate pending local bubble
+- parity impact / delivery status / notable workaround:
+  - the CJMP Android lane now fixes the physical-device TDLib client creation failure and can demonstrate real Telegram history plus a real message send from the chat detail surface
+  - the user-requested OpenSSL SDK check found CJMP SDK OpenSSL FFI loader libraries, not Android TDLib-ready dylibs; the Android path correctly uses Android ABI OpenSSL static libraries instead of macOS/iOS dylibs
+  - notable workaround: live acceptance still uses coordinate taps because CJMP Android UI remains shallow to `uiautomator`
+- AI-efficiency friction summary:
+  - confirmed CJMP delivery friction: Android packaging previously allowed a missing required TDLib native library and produced an APK that could only fail at runtime on device
+  - confirmed CJMP build/acceptance friction: final APK evidence collection with `packageDebug --rerun-tasks` triggered a full TDLib native rebuild, making a packaging check unnecessarily expensive
+  - durable evidence recorded in `/Users/user/Desktop/project/TelegramAIDev/reports/cjmp-issues/2026-05-11-android-tdlib-native-packaging-gap.md`; GitHub issue creation was blocked because the repository currently has Issues disabled

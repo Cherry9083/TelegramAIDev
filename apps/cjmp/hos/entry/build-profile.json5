@@ -4,6 +4,14 @@
     "cangjieOptions": {
       "path": "../../lib/cjpm.toml"
     },
+    "externalNativeOptions": {
+      "path": "./src/main/cpp/CMakeLists.txt",
+      "arguments": "",
+      "cppFlags": "",
+      "abiFilters": [
+        "arm64-v8a"
+      ]
+    },
     "nativeLib": {
       "filter": {
         "enableOverride": true

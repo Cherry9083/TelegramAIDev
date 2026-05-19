@@ -87,6 +87,7 @@ func expectSmokeText(actual: String, expected: String, detail: String): Unit {
     @Expect(actual, expected)
 }
 
+@When[target_platform == "android" || target_platform == "ios" || target_platform == "ios-sim"]
 func expectSmokeScrollText(
     list: UIComponent,
     id: String,
@@ -100,6 +101,23 @@ func expectSmokeScrollText(
     }
 }
 
+@When[target_platform != "android" && target_platform != "ios" && target_platform != "ios-sim"]
+func expectSmokeScrollText(
+    list: UIComponent,
+    id: String,
+    expected: String,
+    detail: String
+): Unit {
+    logSmokeCheck("SCROLL ${detail} [${id}]")
+    try {
+        let component = list.scrollSearch(On().id(id))
+        handleSmokeScrollFound(component, id, expected, detail)
+    } catch (e: BusinessException) {
+        handleSmokeScrollMissing(id, detail)
+    }
+}
+
+@When[target_platform == "android" || target_platform == "ios" || target_platform == "ios-sim"]
 func assertSmokeScrollMissing(
     list: UIComponent,
     id: String,
@@ -109,6 +127,21 @@ func assertSmokeScrollMissing(
     match (list.scrollSearch(On().id(id))) {
         case Some(component) => handleUnexpectedSmokeScrollFound(component, id, detail)
         case None => handleExpectedSmokeScrollMissing(id, detail)
+    }
+}
+
+@When[target_platform != "android" && target_platform != "ios" && target_platform != "ios-sim"]
+func assertSmokeScrollMissing(
+    list: UIComponent,
+    id: String,
+    detail: String
+): Unit {
+    logSmokeCheck("SCROLL MISS ${detail} [${id}]")
+    try {
+        let component = list.scrollSearch(On().id(id))
+        handleUnexpectedSmokeScrollFound(component, id, detail)
+    } catch (e: BusinessException) {
+        handleExpectedSmokeScrollMissing(id, detail)
     }
 }
 

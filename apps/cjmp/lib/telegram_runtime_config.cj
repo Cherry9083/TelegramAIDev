@@ -5,6 +5,9 @@ import std.convert.*
 import std.unicode.*
 
 let TELEGRAM_RUNTIME_CONFIG_EMPTY_NOTICE = "Enter Telegram API ID and API hash to continue."
+let TELEGRAM_PROXY_TYPE_NONE = ""
+let TELEGRAM_PROXY_TYPE_SOCKS5 = "socks5"
+let TELEGRAM_PROXY_TYPE_HTTP = "http"
 let TELEGRAM_DEFAULT_PROXY_HOST = ""
 let TELEGRAM_DEFAULT_PROXY_PORT = ""
 let TELEGRAM_ANDROID_LOOPBACK_PROXY_HOST = "127.0.0.1"
@@ -47,6 +50,12 @@ func normalizeTelegramProxyPort(value: String): String {
     return value.trim()
 }
 
+@When[target_platform == "hos"]
+func defaultTelegramProxyHost(): String {
+    return getOhosDefaultHttpProxyHost()
+}
+
+@When[target_platform != "hos"]
 func defaultTelegramProxyHost(): String {
     if (isAndroidEmulatorRuntime()) {
         return TELEGRAM_EMULATOR_PROXY_HOST
@@ -57,6 +66,16 @@ func defaultTelegramProxyHost(): String {
     return TELEGRAM_DEFAULT_PROXY_HOST
 }
 
+@When[target_platform == "hos"]
+func defaultTelegramProxyPort(): String {
+    let port = getOhosDefaultHttpProxyPort()
+    if (port <= 0) {
+        return TELEGRAM_DEFAULT_PROXY_PORT
+    }
+    return "${port}"
+}
+
+@When[target_platform != "hos"]
 func defaultTelegramProxyPort(): String {
     if (isAndroidEmulatorRuntime()) {
         return TELEGRAM_EMULATOR_PROXY_PORT
@@ -65,6 +84,28 @@ func defaultTelegramProxyPort(): String {
         return TELEGRAM_ANDROID_LOOPBACK_PROXY_PORT
     }
     return TELEGRAM_DEFAULT_PROXY_PORT
+}
+
+@When[target_platform == "hos"]
+func resolveTelegramProxyType(proxyHost: String, proxyPort: String): String {
+    if (normalizeTelegramProxyHost(proxyHost).isEmpty()) {
+        return TELEGRAM_PROXY_TYPE_NONE
+    }
+    if (parseTelegramProxyPort(proxyPort) <= 0) {
+        return TELEGRAM_PROXY_TYPE_NONE
+    }
+    return TELEGRAM_PROXY_TYPE_HTTP
+}
+
+@When[target_platform != "hos"]
+func resolveTelegramProxyType(proxyHost: String, proxyPort: String): String {
+    if (normalizeTelegramProxyHost(proxyHost).isEmpty()) {
+        return TELEGRAM_PROXY_TYPE_NONE
+    }
+    if (parseTelegramProxyPort(proxyPort) <= 0) {
+        return TELEGRAM_PROXY_TYPE_NONE
+    }
+    return TELEGRAM_PROXY_TYPE_SOCKS5
 }
 
 func parseTelegramProxyPort(value: String): Int64 {
@@ -266,7 +307,15 @@ func writeTelegramRuntimeConfigStorage(configJson: String): Bool {
     return didPersist == 1
 }
 
-@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android"]
+@When[target_platform == "hos"]
+func writeTelegramRuntimeConfigStorage(configJson: String): Bool {
+    let configCString = unsafe { LibC.mallocCString(configJson) }
+    let didPersist = unsafe { FfiSaveTelegramRuntimeConfig(configCString) }
+    unsafe { LibC.free(configCString) }
+    return didPersist == 1
+}
+
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android" || target_platform == "hos"]
 func readTelegramRuntimeConfigStorage(): String {
     let storedConfig = unsafe { FfiLoadTelegramRuntimeConfig() }
     let result = storedConfig.toString()
@@ -274,7 +323,7 @@ func readTelegramRuntimeConfigStorage(): String {
     return result
 }
 
-@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android"]
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android" || target_platform == "hos"]
 func clearTelegramRuntimeConfigStorage(): Unit {
     unsafe { FfiClearTelegramRuntimeConfig() }
 }
@@ -295,7 +344,15 @@ func writeTelegramSessionKeyStorage(sessionKey: String): Bool {
     return didPersist == 1
 }
 
-@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android"]
+@When[target_platform == "hos"]
+func writeTelegramSessionKeyStorage(sessionKey: String): Bool {
+    let sessionCString = unsafe { LibC.mallocCString(sessionKey) }
+    let didPersist = unsafe { FfiSaveTelegramSessionKey(sessionCString) }
+    unsafe { LibC.free(sessionCString) }
+    return didPersist == 1
+}
+
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android" || target_platform == "hos"]
 func readTelegramSessionKeyStorage(): String {
     let storedKey = unsafe { FfiLoadTelegramSessionKey() }
     let result = storedKey.toString()
@@ -303,53 +360,53 @@ func readTelegramSessionKeyStorage(): String {
     return result
 }
 
-@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android"]
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android" || target_platform == "hos"]
 func clearTelegramSessionKeyStorage(): Unit {
     unsafe { FfiClearTelegramSessionKey() }
 }
 
-@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android"]
+@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android" && target_platform != "hos"]
 func writeTelegramRuntimeConfigStorage(configJson: String): Bool {
     return !configJson.isEmpty()
 }
 
-@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android"]
+@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android" && target_platform != "hos"]
 func readTelegramRuntimeConfigStorage(): String {
     return ""
 }
 
-@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android"]
+@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android" && target_platform != "hos"]
 func clearTelegramRuntimeConfigStorage(): Unit {
 }
 
-@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android"]
+@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android" && target_platform != "hos"]
 func writeTelegramSessionKeyStorage(sessionKey: String): Bool {
     return !sessionKey.isEmpty()
 }
 
-@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android"]
+@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android" && target_platform != "hos"]
 func readTelegramSessionKeyStorage(): String {
     return ""
 }
 
-@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android"]
+@When[target_platform != "ios" && target_platform != "ios-sim" && target_platform != "android" && target_platform != "hos"]
 func clearTelegramSessionKeyStorage(): Unit {
 }
 
-@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android"]
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android" || target_platform == "hos"]
 foreign func FfiSaveTelegramRuntimeConfig(configJson: CString): Int64
 
-@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android"]
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android" || target_platform == "hos"]
 foreign func FfiLoadTelegramRuntimeConfig(): CString
 
-@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android"]
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android" || target_platform == "hos"]
 foreign func FfiClearTelegramRuntimeConfig(): Unit
 
-@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android"]
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android" || target_platform == "hos"]
 foreign func FfiSaveTelegramSessionKey(sessionKey: CString): Int64
 
-@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android"]
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android" || target_platform == "hos"]
 foreign func FfiLoadTelegramSessionKey(): CString
 
-@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android"]
+@When[target_platform == "ios" || target_platform == "ios-sim" || target_platform == "android" || target_platform == "hos"]
 foreign func FfiClearTelegramSessionKey(): Unit

@@ -131,9 +131,9 @@ class HomeShellPage {
     @State
     var realSettingsVersion: Int64 = 0
 
-    var chatListScroller: ListScroller = ListScroller()
-    var contactsScroller: ListScroller = ListScroller()
-    var settingsScroller: ListScroller = ListScroller()
+    var chatListScroller: PlatformListScroller = PlatformListScroller()
+    var contactsScroller: PlatformListScroller = PlatformListScroller()
+    var settingsScroller: PlatformListScroller = PlatformListScroller()
     private var entryMode: String = ENTRY_MODE_HOME_DEFAULT
     private var didResolveEntryMode: Bool = false
     private var didStartRealSurfaceSync: Bool = false

@@ -49,7 +49,7 @@ class ChatDetailPage {
     @State
     var telegramMessagesVersion: Int64 = 0
 
-    var messageScroller: ListScroller = ListScroller()
+    var messageScroller: PlatformListScroller = PlatformListScroller()
     private var didResolveConversation: Bool = false
     private var didStartRealMessageSync: Bool = false
 

@@ -8,3 +8,5 @@ CLAUDE.md
 third_party/
 *.dylib
 *.so
+.VSCodeCounter
+reports/
