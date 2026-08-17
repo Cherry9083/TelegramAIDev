@@ -42,8 +42,8 @@ export ANDROID_SDK_ROOT="$HOME/Library/Android/sdk"
 **`lib/common/telegram_quick_test.cj`（第 12-14 行）：**
 
 ```cangjie
-let TEST_API_ID = "你的 api_id"          // 例如 "34596433"
-let TEST_API_HASH = "你的 api_hash"       // 例如 "1efe3477b86069c6635c01d79e8dfa15"
+let TEST_API_ID = "你的 api_id"          // 例如 "12345678"
+let TEST_API_HASH = "你的 api_hash"       // 例如 "abcdef1234567890abcdef1234567890"
 let TEST_PHONE_NUMBER = "你的手机号"       // 例如 "+8613800138000"
 ```
 
