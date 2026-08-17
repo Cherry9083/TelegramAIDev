@@ -6,50 +6,75 @@ setlocal enabledelayedexpansion
 @REM Build configuration
 set buildType=%1
 set buildTarget=%2
+set buildProfile=%3
 set cangjieFolder=cangjie-%buildTarget%
 
 @REM Base paths
 set CJMP_UI_PATH=!CJMP_SDK_HOME!\cjmp-ui
 set CJMP_ENGINE_PATH=!CJMP_SDK_HOME!\ui-engine
 set CJMP_TOOL_PATH=!CJMP_SDK_HOME!\cjmp-tools
+set CJMP_TEST_PATH=!CJMP_SDK_HOME!\cjmp-test
 set CJMP_LIBS_PATH=!CJMP_SDK_HOME!\cjmp-libs
+set CJMP_TOOLS_LIBS_PATH=!CJMP_TOOL_PATH!\libs
 set CANGJIE_STDX_PATH=!CJMP_TOOL_PATH!/third_party/cangjie-stdx
 
 @REM Platform-specific configuration
 if "%buildTarget%"=="android" (
     set cangjieTarget=aarch64-linux-android26
     set ANDROID_CJ_FRONTEND=!CJMP_UI_PATH!\android
-    set ANDROID_NDK_DIR=!ANDROID_SDK_ROOT!\ndk\26.3.11579264
+    set ANDROID_NDK_DIR=!ANDROID_SDK_ROOT!\ndk\27.2.12479018
     set ANDROID_ENGINE_PATH=!CJMP_ENGINE_PATH!\android
     set ANDROID_CANGJIE_PATH=!CJMP_TOOL_PATH!\third_party\cangjie-android
+    set ANDROID_CANGJIE_RUNTIME_PATH=!ANDROID_CANGJIE_PATH!\runtime\lib\linux_android_aarch64_cjnative
     set ANDROID_CANGJIE_STDX_PATH=!CANGJIE_STDX_PATH!\linux_android_aarch64_cjnative\dynamic\stdx
     set ANDROID_CJMP_LIBS_PATH=!CJMP_LIBS_PATH!\android\dynamic
-    set ANDROID_BRIDGE=!SCRIPT_DIR!\android\app\build\intermediates\cmake\!buildType!\obj\arm64-v8a
+    if "%~4"=="" (
+        set ANDROID_BRIDGE=!SCRIPT_DIR!\android\app\build\intermediates\cmake\!buildType!\obj\arm64-v8a
+    ) else (
+        set ANDROID_BRIDGE=%~4
+    )
     set lib_share_path=!ANDROID_NDK_DIR!\toolchains\llvm\prebuilt\windows-x86_64\sysroot\usr\lib\aarch64-linux-android\libc++_shared.so
     set SYSTEM_STRING=windows-x86_64
+    set ANDROID_TEST_PATH=!CJMP_TEST_PATH!\android\ohos
 )
 
 @REM Build type configuration
 if "%buildType%"=="debug" (
-    set cangjieExtraArgs=-g
+    set cangjieExtraArgs=-g --debug
 ) else (
-    set cangjieExtraArgs=
+    set cangjieExtraArgs=--release
 )
 
 @REM Build cangjie libraries
 set build_path=!SCRIPT_DIR!\build
-set src_path=!SCRIPT_DIR!\lib
+if defined KEELS_CJ_SRC_PATH (
+    set src_path=!KEELS_CJ_SRC_PATH!
+) else (
+    set src_path=!SCRIPT_DIR!\lib
+)
+
+if defined KEELS_CJ_PACKAGE_NAME (
+    set cangjiePackageName=!KEELS_CJ_PACKAGE_NAME!
+) else (
+    set cangjiePackageName=ohos_app_cangjie_entry
+)
 
 cd /d "!src_path!"
 call "!CJMP_TOOL_PATH!\third_party\!cangjieFolder!\envsetup.bat"
-cjpm build --no-feature-deduce --target-dir=!build_path! --target=!cangjieTarget! !cangjieExtraArgs!
+cjpm build --target-dir=!build_path! --target=!cangjieTarget! !cangjieExtraArgs!
 if errorlevel 1 (
     echo Error: cjpm build failed with errorlevel !errorlevel!
     exit /b 1
 )
 cd /d "!SCRIPT_DIR!"
 
-set inputDir=!build_path!\!cangjieTarget!\!buildType!\ohos_app_cangjie_entry
+set packageOutputRoot=!build_path!\!cangjieTarget!\!buildType!
+set sourceSet=android
+if "!KEELS_IS_TEST_BUILD!"=="true" (
+    set inputDir=!packageOutputRoot!\!cangjiePackageName!
+) else (
+    set inputDir=!packageOutputRoot!\!cangjiePackageName!\!sourceSet!\product
+)
 echo Input directory: !inputDir!
 
 if "%buildTarget%"=="android" (
@@ -62,16 +87,20 @@ if "%buildTarget%"=="android" (
 
     @REM copy: main library files
     call :copy_libs "!ANDROID_ENGINE_PATH!" "!outputDir!" "jar"
-    call :copy_libs "!inputDir!" "!outputDir!\arm64-v8a" "so" "cjo"
-    call :copy_libs "!ANDROID_BRIDGE!" "!outputDir!\arm64-v8a" "so"
+    call :copy_package_libs "!inputDir!" "!outputDir!\arm64-v8a" "false"
 
     @REM copy: library dependencies
-    call :analyze_dependencies "!outputDir!\arm64-v8a" "android" "!ANDROID_CANGJIE_PATH!" "!ANDROID_CJ_FRONTEND!" "!ANDROID_CANGJIE_STDX_PATH!" "!ANDROID_CJMP_LIBS_PATH!"
+    call :analyze_dependencies "!outputDir!\arm64-v8a" "android" "!packageOutputRoot!" "!ANDROID_CANGJIE_RUNTIME_PATH!" "!ANDROID_CJ_FRONTEND!" "!ANDROID_CANGJIE_STDX_PATH!" "!ANDROID_CJMP_LIBS_PATH!" "!ANDROID_TEST_PATH!"
     call :copy_dependencies "!outputDir!\arm64-v8a" "!DEP_FILE!"
 
     @REM copy: additional dependencies
     copy /y "!ANDROID_ENGINE_PATH!\arm64-v8a\libkeels_android.so" "!outputDir!\arm64-v8a\" >nul
     copy /y "!lib_share_path!" "!outputDir!\arm64-v8a\" >nul
+
+    if "%buildProfile%"=="true" (
+        @REM copy: debugger library
+        copy /y "!CJMP_TOOLS_LIBS_PATH!\android\libdevtools_debugger.so" "!outputDir!\arm64-v8a\" >nul
+    )
 )
 
 echo Build completed successfully!
@@ -178,4 +207,66 @@ if !copied_count! gtr 0 (
 
 del /f /q "!dep_file!" >nul 2>&1
 
+endlocal & exit /b 0
+
+:copy_package_libs
+setlocal enabledelayedexpansion
+set "input_dir=%~1"
+set "output_dir=%~2"
+set "copy_cjo=%~3"
+
+if not exist "!input_dir!\" (
+    echo error: !input_dir! not exist
+    exit /b 1
+)
+
+if not exist "!output_dir!\" (
+    echo error: !output_dir! not exist
+    exit /b 1
+)
+
+set "cache_file=!input_dir!\incremental-cache.json"
+if not exist "!cache_file!" (
+    echo Warning: incremental-cache.json not found, copying all files
+    if /i "!copy_cjo!"=="true" (
+        call :copy_libs "!input_dir!" "!output_dir!" "so" "cjo"
+    ) else (
+        call :copy_libs "!input_dir!" "!output_dir!" "so"
+    )
+    exit /b 0
+)
+
+set file_count=0
+
+@REM Use Python to parse JSON and extract package names, then copy files directly
+for /f "delims=" %%p in ('python -c "import json; data=json.load(open(r'!cache_file!')); print('\n'.join(data.get('packageInformation', {}).keys()))" 2^>nul') do (
+    set "pkg_name=%%p"
+
+    @REM Copy .so file
+    set "so_file=!input_dir!\lib!pkg_name!.so"
+    if exist "!so_file!" (
+        copy /y "!so_file!" "!output_dir!\" >nul
+        set /a file_count+=1
+    )
+
+    @REM Copy .cjo file (only if copy_cjo is true)
+    if /i "!copy_cjo!"=="true" (
+        set "cjo_file=!input_dir!\!pkg_name!.cjo"
+        if exist "!cjo_file!" (
+            copy /y "!cjo_file!" "!output_dir!\" >nul
+            set /a file_count+=1
+        )
+    )
+)
+
+if !file_count! equ 0 (
+    echo Warning: No packages found in incremental-cache.json, copying all .so files
+    if /i "!copy_cjo!"=="true" (
+        call :copy_libs "!input_dir!" "!output_dir!" "so" "cjo"
+    ) else (
+        call :copy_libs "!input_dir!" "!output_dir!" "so"
+    )
+) else (
+    echo Copied !file_count! files to !output_dir!
+)
 endlocal & exit /b 0

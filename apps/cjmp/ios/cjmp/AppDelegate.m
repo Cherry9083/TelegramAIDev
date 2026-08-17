@@ -26,11 +26,24 @@
 
 @implementation AppDelegate
 
+- (NSString *)getInitialAbilityName {
+    NSArray *arguments = [NSProcessInfo processInfo].arguments;
+    for (NSInteger i = 1; i + 1 < arguments.count; i++) {
+        if ([arguments[i] isEqualToString:@"keels.test.abilityName"]) {
+            NSString *abilityName = arguments[i + 1];
+            if (abilityName.length > 0) {
+                return abilityName;
+            }
+        }
+    }
+    return @"EntryAbility";
+}
+
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     [StageApplication configModuleWithBundleDirectory:BUNDLE_DIRECTORY];
     [StageApplication launchApplication];
 
-    NSString *instanceName = [NSString stringWithFormat:@"%@:%@:%@",BUNDLE_NAME, @"entry", @"EntryAbility"];
+    NSString *instanceName = [NSString stringWithFormat:@"%@:%@:%@", BUNDLE_NAME, @"entry", [self getInitialAbilityName]];
     EntryEntryAbilityViewController *mainView = [[EntryEntryAbilityViewController alloc] initWithInstanceName:instanceName];
     [self setNavRootVC:mainView];
     return YES;
@@ -74,11 +87,8 @@
 
     id subStageVC = nil;
 
-    if ([moduleName isEqualToString:@"entry"] && [abilityName isEqualToString:@"EntryAbility"]) {
-        NSString *instanceName = [NSString stringWithFormat:@"%@:%@:%@",bundleName, moduleName, abilityName];
-        EntryEntryAbilityViewController *otherVC = [[EntryEntryAbilityViewController alloc] initWithInstanceName:instanceName];
-        subStageVC = (EntryEntryAbilityViewController *)otherVC;
-    } else if ([moduleName isEqualToString:@"entry"] && [abilityName isEqualToString:@"EntryAbility"]) {
+    if ([moduleName isEqualToString:@"entry"] && ([abilityName isEqualToString:@"EntryAbility"] ||
+        [abilityName isEqualToString:@"TestEntryAbility"])) {
         NSString *instanceName = [NSString stringWithFormat:@"%@:%@:%@",bundleName, moduleName, abilityName];
         EntryEntryAbilityViewController *otherVC = [[EntryEntryAbilityViewController alloc] initWithInstanceName:instanceName];
         subStageVC = (EntryEntryAbilityViewController *)otherVC;
@@ -102,6 +112,7 @@
     self.window.backgroundColor = [UIColor whiteColor];
     [self.window makeKeyAndVisible];
     UINavigationController *navi = [[UINavigationController alloc]initWithRootViewController:viewController];
+    [navi setNavigationBarHidden:YES animated:NO];
     [self setNaviAppearance:navi];
     self.window.rootViewController = navi;
 }

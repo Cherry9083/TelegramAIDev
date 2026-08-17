@@ -1,22 +1,14 @@
 import org.gradle.internal.os.OperatingSystem
-
+import com.android.build.gradle.tasks.ProcessMultiApkApplicationManifest
 plugins {
     id 'com.android.application'
-}
-
-def requestedUiTestMode = (
-        project.findProperty("cjmpUiTestMode")
-                ?: (gradle.startParameter.taskNames.any { it.toLowerCase().contains("androidtest") } ? "autorun" : "off")
-).toString()
-
-if (!["off", "autorun"].contains(requestedUiTestMode)) {
-    throw new GradleException("cjmpUiTestMode must be 'off' or 'autorun', got '${requestedUiTestMode}'")
 }
 
 android {
     namespace "com.example.cjmp"
     compileSdk 34
-    ndkVersion "26.3.11579264"
+
+    ndkVersion "27.2.12479018"
 
     defaultConfig {
         applicationId "com.example.cjmp"
@@ -24,8 +16,6 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0"
-
-        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
 
         ndk {
             abiFilters "arm64-v8a"
@@ -38,7 +28,17 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        debugTest {
+            initWith debug
+            matchingFallbacks = ['debug']
+        }
+        releaseTest {
+            initWith release
+            debuggable true
+            matchingFallbacks = ['release']
+        }
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
@@ -47,10 +47,9 @@ android {
     externalNativeBuild {
         cmake {
             path file('src/main/cpp/CMakeLists.txt')
+            version "3.22.1"
         }
     }
-
-    dynamicFeatures = []
 
     sourceSets {
         main {
@@ -58,15 +57,21 @@ android {
         }
     }
 
-    android.applicationVariants.all { variant ->
+    dynamicFeatures = []
+
+    applicationVariants.all { variant ->
         def os = OperatingSystem.current()
+        def enableProfile = variant.buildType.debuggable && 
+            (project.hasProperty('enableProfile') ? project.property('enableProfile').toBoolean() : false)
+        def cangjieBuildType = variant.name == "debugTest" ? "debug" : (variant.name == "releaseTest" ? "release" : variant.name)
+        def androidBridgePath = "${project.rootDir}/app/build/intermediates/cmake/${variant.name}/obj/arm64-v8a"
         def postBuildTask = tasks.register("buildCangjieResources${variant.name.capitalize()}", Exec) {
             dependsOn variant.externalNativeBuildTasks
             workingDir "../.."
             if (os.isWindows()) {
-                commandLine "cmd", "/C", "build.bat", variant.name, "android", requestedUiTestMode
+                commandLine "cmd", "/C", "build.bat", cangjieBuildType, "android", enableProfile, androidBridgePath
             } else {
-                commandLine "bash", "build.sh", variant.name, "android", requestedUiTestMode
+                commandLine "bash", "build.sh", cangjieBuildType, "android", enableProfile, androidBridgePath
             }
         }
         variant.javaCompileProvider.get().dependsOn(postBuildTask)
@@ -75,11 +80,55 @@ android {
         }
     }
 }
+afterEvaluate {
+    tasks.withType(ProcessMultiApkApplicationManifest).configureEach { processManifestTask ->
+        processManifestTask.outputs.upToDateWhen { false }
+
+        processManifestTask.doLast {
+            def taskName = processManifestTask.name.toLowerCase()
+            def enableProfile = taskName.contains('debug') && 
+                (project.hasProperty('enableProfile') ? project.property('enableProfile').toBoolean() : false)
+            if (!enableProfile) {
+                println("Profile mode is disabled (either enableProfile is false or not in debug build)")
+                return
+            }
+            def manifestOutputDir = processManifestTask.multiApkManifestOutputDirectory.get().asFile
+            File manifestFile = new File(manifestOutputDir, "AndroidManifest.xml")
+            if (!manifestFile.exists()) {
+                manifestFile = new File(manifestOutputDir, "main/AndroidManifest.xml")
+            }
+            println("manifestFile: ${manifestFile.absolutePath}")
+            if (!manifestFile.exists()) {
+                println("cannot find manifest file, skip...")
+                return
+            }
+
+            def xmlParser = new XmlParser(false, false)
+            xmlParser.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+            def manifestRoot = xmlParser.parse(manifestFile)
+
+            boolean hasInternetPermission = false
+            manifestRoot.children().each { child ->
+                if (child.name() == "uses-permission" &&
+                    child.attribute("android:name") == "android.permission.INTERNET") {
+                    hasInternetPermission = true
+                }
+            }
+            println("Checking INTERNET permission: ${hasInternetPermission ? 'exists' : 'missing'}")
+            if (hasInternetPermission) {
+                return
+            }
+
+            def internetPermission = new Node(manifestRoot, "uses-permission")
+            internetPermission.attributes().put("android:name", "android.permission.INTERNET")
+            def printer = new XmlNodePrinter(new PrintWriter(manifestFile, "UTF-8"))
+            printer.preserveWhitespace = true
+            printer.print(manifestRoot)
+            println("Added INTERNET permission to AndroidManifest.xml")
+        }
+    }
+}
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
-    testImplementation 'junit:junit:4.+'
-    androidTestImplementation 'com.android.support.test:runner:1.0.2'
-    androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
-    androidTestImplementation 'com.android.support.test.uiautomator:uiautomator-v18:2.1.3'
 }

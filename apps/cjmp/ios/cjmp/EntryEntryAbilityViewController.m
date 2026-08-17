@@ -34,4 +34,25 @@
     self.edgesForExtendedLayout = UIRectEdgeNone;
     self.extendedLayoutIncludesOpaqueBars = YES;
 }
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self layoutStageContentBelowTopSafeArea];
+}
+
+- (void)viewSafeAreaInsetsDidChange {
+    [super viewSafeAreaInsetsDidChange];
+    [self layoutStageContentBelowTopSafeArea];
+}
+
+- (void)layoutStageContentBelowTopSafeArea {
+    CGFloat topInset = self.view.safeAreaInsets.top;
+    CGRect contentFrame = self.view.bounds;
+    contentFrame.origin.y = topInset;
+    contentFrame.size.height = MAX(0, CGRectGetHeight(self.view.bounds) - topInset);
+
+    for (UIView *subview in self.view.subviews) {
+        subview.frame = contentFrame;
+        subview.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    }
+}
 @end
