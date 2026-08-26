@@ -1,0 +1,32 @@
+apps/cjmp/lib/cjpm.toml
+  s_94c77fbac21362::t_1915feb20de20a 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "f0b0c4c5679ba24d1f23868646fd53abc66c41e4",
+  "prompts": {},
+  "sessions": {
+    "s_94c77fbac21362": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8be9910efd172c50dd32cc",
+        "model": "glm-5.3"
+      },
+      "human_author": "huang_yan666 <908399669@qq.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a8eae080efd172c50dd36d5",
+        "session_id": "6a8be9910efd172c50dd32cc",
+        "source_scene": "agent",
+        "operation_id": "6a8eae080efd172c50dd36d5",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_type": "builtin",
+        "dedupe_key": "6a8be9910efd172c50dd32cc:6a8eae080efd172c50dd36d5:afterEdit:287dfab3",
+        "external_session_id": "6a8be9910efd172c50dd32cc",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "tool_id": "icube:applyChatSnapshotPatch"
+      }
+    }
+  }
+}
