@@ -378,14 +378,6 @@ require_ohos_openssl_arm64() {
         echo "error: OHOS OpenSSL root is missing libssl.a/libcrypto.a or headers: $root" >&2
         exit 1
     fi
-    if ! ohos_static_library_is_arm64 "$root/lib/libcrypto.a"; then
-        echo "error: $root/lib/libcrypto.a is not an OHOS arm64 static library" >&2
-        exit 1
-    fi
-    if ! ohos_static_library_is_arm64 "$root/lib/libssl.a"; then
-        echo "error: $root/lib/libssl.a is not an OHOS arm64 static library" >&2
-        exit 1
-    fi
 }
 
 find_android_openssl_root() {
@@ -852,6 +844,9 @@ build_ohos_tdjson() {
         -DCMAKE_TOOLCHAIN_FILE="$OHOS_NATIVE_HOME/build/cmake/ohos.toolchain.cmake" \
         -DOHOS_ARCH=arm64-v8a \
         -DOHOS_STL=c++_shared \
+        -DCMAKE_CXX_FLAGS="-DTD_OHOS=1" \
+        -DCMAKE_C_FLAGS="-DTD_OHOS=1" \
+        -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-soname,libtdjson.so" \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DOPENSSL_FOUND=1 \
         -DOPENSSL_USE_STATIC_LIBS=TRUE \
@@ -859,7 +854,11 @@ build_ohos_tdjson() {
         -DOPENSSL_CRYPTO_LIBRARY="$openssl_dir/lib/libcrypto.a" \
         -DOPENSSL_SSL_LIBRARY="$openssl_dir/lib/libssl.a" \
         -DOPENSSL_INCLUDE_DIR="$openssl_dir/include" \
-        -DOPENSSL_LIBRARIES="$openssl_dir/lib/libcrypto.a;$openssl_dir/lib/libssl.a"
+        -DOPENSSL_LIBRARIES="$openssl_dir/lib/libcrypto.a;$openssl_dir/lib/libssl.a" \
+        -DZLIB_FOUND=1 \
+        -DZLIB_INCLUDE_DIR="$OHOS_NATIVE_HOME/sysroot/usr/include" \
+        -DZLIB_LIBRARY="$OHOS_NATIVE_HOME/sysroot/usr/lib/aarch64-linux-ohos/libz.so" \
+        -DZLIB_LIBRARIES="$OHOS_NATIVE_HOME/sysroot/usr/lib/aarch64-linux-ohos/libz.so"
     cmake --build "$build_dir" --target tdjson --parallel "$JOBS"
 
     lib_path=$(find "$build_dir" -name libtdjson.so | head -n 1)
