@@ -1,0 +1,33 @@
+apps/cjmp/lib/common/telegram_tdlib_facade.cj
+  s_94c77fbac21362::t_f4383bf660fc76 1454-1458
+apps/cjmp/lib/common/index.cj
+  s_94c77fbac21362::t_f4383bf660fc76 491,512
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "977fdd46c8d5bcb03da97619d148f597e8c7fd30",
+  "prompts": {},
+  "sessions": {
+    "s_94c77fbac21362": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8be9910efd172c50dd32cc",
+        "model": "glm-5.2__dev"
+      },
+      "human_author": "huang_yan666 <908399669@qq.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a8fe1af37e6e5cb6e1291ec",
+        "operation_id": "6a8fe1af37e6e5cb6e1291ec",
+        "external_session_id": "6a8be9910efd172c50dd32cc",
+        "tool_name": "RunCommand",
+        "edit_kind": "bash",
+        "session_id": "6a8be9910efd172c50dd32cc",
+        "source_scene": "agent",
+        "client_type": "ide",
+        "runtime_client": "trae-tob-git-ai",
+        "display_model_name": "GLM-5.2"
+      }
+    }
+  }
+}
