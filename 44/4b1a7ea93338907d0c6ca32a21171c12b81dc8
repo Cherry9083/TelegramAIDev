@@ -1,0 +1,32 @@
+docs/main-thread-state-updates-fix.md
+  s_94c77fbac21362::t_aac58ff17522ae 1-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "444b1a7ea93338907d0c6ca32a21171c12b81dc8",
+  "prompts": {},
+  "sessions": {
+    "s_94c77fbac21362": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8be9910efd172c50dd32cc",
+        "model": "glm-5.2__dev"
+      },
+      "human_author": "huang_yan666 <908399669@qq.com>",
+      "custom_attributes": {
+        "dedupe_key": "6a8be9910efd172c50dd32cc:6a8fe1c637e6e5cb6e1291f8:afterEdit:d96e0758",
+        "operation_id": "6a8fe1c637e6e5cb6e1291f8",
+        "external_session_id": "6a8be9910efd172c50dd32cc",
+        "edit_kind": "file_edit",
+        "client_type": "ide",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_id": "Write",
+        "source_scene": "unknown",
+        "tool_type": "agent",
+        "session_id": "6a8be9910efd172c50dd32cc",
+        "tool_use_id": "6a8fe1c637e6e5cb6e1291f8"
+      }
+    }
+  }
+}
