@@ -1,0 +1,28 @@
+apps/cjmp/lib/common/index.cj
+  s_94c77fbac21362::t_3dc19608041379 13,20-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "452288e1ee021cee94deb6c917022da137550c1f",
+  "prompts": {},
+  "sessions": {
+    "s_94c77fbac21362": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8be9910efd172c50dd32cc",
+        "model": "glm-5.3__dev"
+      },
+      "human_author": "huang_yan666 <908399669@qq.com>",
+      "custom_attributes": {
+        "external_session_id": "6a8be9910efd172c50dd32cc",
+        "session_id": "6a8be9910efd172c50dd32cc",
+        "edit_kind": "bash",
+        "operation_id": "6a8ebcaf0efd172c50dd383a",
+        "display_model_name": "GLM-5.3",
+        "tool_name": "RunCommand",
+        "tool_use_id": "6a8ebcaf0efd172c50dd383a"
+      }
+    }
+  }
+}
