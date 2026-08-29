@@ -1,0 +1,39 @@
+apps/cjmp/lib/cjpm.toml
+  s_94c77fbac21362::t_1915feb20de20a 4
+apps/cjmp/hos/.gitignore
+  s_94c77fbac21362::t_3ebc7e63a42e23 13-19
+apps/cjmp/hos/entry/.gitignore
+  s_94c77fbac21362::t_1d8ab9bbfa3f6e 6-8
+apps/cjmp/lib/common/index.cj
+  s_94c77fbac21362::t_f0356a76aee6c7 168-175,177-178
+apps/cjmp/scripts/build_tdlib_phase0.sh
+  s_94c77fbac21362::t_39b6faf4d55146 847-849,857-861
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "178320bd57c81dccb68c01bbc39a635675f70f0d",
+  "prompts": {},
+  "sessions": {
+    "s_94c77fbac21362": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8be9910efd172c50dd32cc",
+        "model": "glm-5.2__dev"
+      },
+      "human_author": "huang_yan666 <908399669@qq.com>",
+      "custom_attributes": {
+        "operation_id": "6a929cf737e6e5cb6e12995a",
+        "client_type": "ide",
+        "edit_kind": "bash",
+        "session_id": "6a8be9910efd172c50dd32cc",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "agent",
+        "external_session_id": "6a8be9910efd172c50dd32cc",
+        "tool_name": "RunCommand",
+        "display_model_name": "GLM-5.2",
+        "tool_use_id": "6a929cf737e6e5cb6e12995a"
+      }
+    }
+  }
+}
