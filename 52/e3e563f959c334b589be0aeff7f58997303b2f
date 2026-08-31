@@ -1,0 +1,21 @@
+apps/cjmp/lib/common/index.cj
+  s_94c77fbac21362::t_cd827ec8c12cab 13,19-29,212,216,225-233,235,349,353-356,387,390-392,399,405-410,415,418-419,424-427,491,512
+apps/cjmp/lib/common/telegram_tdlib_facade.cj
+  s_94c77fbac21362::t_7a1c76f66fd524 1454-1458
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "52e3e563f959c334b589be0aeff7f58997303b2f",
+  "prompts": {},
+  "sessions": {
+    "s_94c77fbac21362": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8be9910efd172c50dd32cc",
+        "model": "glm-5.3-flash__dev"
+      },
+      "human_author": "huang_yan666 <908399669@qq.com>"
+    }
+  }
+}
