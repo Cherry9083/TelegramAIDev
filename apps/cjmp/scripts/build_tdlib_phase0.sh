@@ -378,6 +378,14 @@ require_ohos_openssl_arm64() {
         echo "error: OHOS OpenSSL root is missing libssl.a/libcrypto.a or headers: $root" >&2
         exit 1
     fi
+    if ! ohos_static_library_is_arm64 "$root/lib/libcrypto.a"; then
+        echo "error: $root/lib/libcrypto.a is not an OHOS arm64 static library" >&2
+        exit 1
+    fi
+    if ! ohos_static_library_is_arm64 "$root/lib/libssl.a"; then
+        echo "error: $root/lib/libssl.a is not an OHOS arm64 static library" >&2
+        exit 1
+    fi
 }
 
 find_android_openssl_root() {
