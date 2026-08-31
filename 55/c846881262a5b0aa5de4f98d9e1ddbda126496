@@ -1,0 +1,32 @@
+apps/cjmp/scripts/build_tdlib_phase0.sh
+  s_94c77fbac21362::t_606133be6ed8e0 381-388
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "55c846881262a5b0aa5de4f98d9e1ddbda126496",
+  "prompts": {},
+  "sessions": {
+    "s_94c77fbac21362": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8be9910efd172c50dd32cc",
+        "model": "glm-5.3-flash__dev"
+      },
+      "human_author": "huang_yan666 <908399669@qq.com>",
+      "custom_attributes": {
+        "dedupe_key": "6a8be9910efd172c50dd32cc:6a951cdd37e6e5cb6e129a1f:afterEdit:323456d0",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_type": "agent",
+        "session_id": "6a8be9910efd172c50dd32cc",
+        "tool_id": "Edit",
+        "external_session_id": "6a8be9910efd172c50dd32cc",
+        "source_scene": "unknown",
+        "operation_id": "6a951cdd37e6e5cb6e129a1f",
+        "edit_kind": "file_edit",
+        "client_type": "ide",
+        "tool_use_id": "6a951cdd37e6e5cb6e129a1f"
+      }
+    }
+  }
+}
