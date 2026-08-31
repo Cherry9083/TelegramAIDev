@@ -165,19 +165,17 @@ class EntryView {
         this.startupState = STARTUP_LOADING
         let modeCopy = this.entryMode
 
-        let _ = spawn {
-            sleep(700 * Duration.millisecond)
-            if (modeCopy == ENTRY_MODE_SMOKE_FAILURE) {
-                this.startupState = STARTUP_FAILURE
-            } else if (isUiTestAutorunEnabled()) {
-                this.startupState = STARTUP_LOGIN
-                this.pendingUiTestRoute = true
-            } else {
-                this.startupState = STARTUP_LOGIN
-            }
-            this.syncLoginStateFromTelegramAuth()
-            this.startTelegramSessionRestoreIfEligible()
+        // Keep bootstrap on the UI thread; state objects reject background updates.
+        if (modeCopy == ENTRY_MODE_SMOKE_FAILURE) {
+            this.startupState = STARTUP_FAILURE
+        } else if (isUiTestAutorunEnabled()) {
+            this.startupState = STARTUP_LOGIN
+            this.pendingUiTestRoute = true
+        } else {
+            this.startupState = STARTUP_LOGIN
         }
+        this.syncLoginStateFromTelegramAuth()
+        this.startTelegramSessionRestoreIfEligible()
     }
 
     func canAttemptTelegramSessionRestore(): Bool {
