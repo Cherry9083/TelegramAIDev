@@ -1451,6 +1451,11 @@ func submitTelegramVerificationCode(code: String): Bool {
     if (telegramAuthSubmitInFlight || telegramAuthClientHandle == 0) {
         return false
     }
+    if (telegramAuthStepState != TELEGRAM_AUTH_STEP_CODE) {
+        AppLog.info("submitTelegramVerificationCode: rejected, current step=${telegramAuthStepState}")
+        telegramAuthNoticeState = "Telegram is not waiting for a verification code."
+        return false
+    }
     telegramAuthSubmitInFlight = true
     if (!sendTelegramTdRequest(telegramAuthClientHandle, buildTelegramTdCheckCodeRequest(code))) {
         telegramAuthSubmitInFlight = false

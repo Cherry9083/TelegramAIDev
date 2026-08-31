@@ -10,10 +10,22 @@ internal import ohos.state_manage.LocalStorage
 internal import ohos.base.LengthProp
 internal import ohos.base.AppLog
 import ohos.router.Router
+import ohos.base.Main
 import ohos.state_macro_manage.Entry
 import ohos.state_macro_manage.Component
 import ohos.state_macro_manage.State
 import std.time.*
+
+func postToMainThread(action: () -> Unit): Unit {
+    // ArkUI @State variables reject writes from background threads.
+    // ohos.concurrency.launch does NOT dispatch to the UI main thread in pure
+    // Cangjie apps (verified on device: closure runs on the caller thread).
+    // Per ArkUI-CJ docs "线程控制", spawn (Main) binds the closure to the UI
+    // main thread; Main is a MainThreadContext exported by ohos.base.
+    let _ = spawn (Main) {
+        action()
+    }
+}
 
 let COLOR_APP_BACKGROUND = 0xFFF4F6F8
 let COLOR_SURFACE = 0xFFFFFFFF
@@ -197,11 +209,11 @@ class EntryView {
             restartTelegramAuth()
             var waitPolls: Int64 = 0
             while (waitPolls < LOGIN_RESTORE_TIMEOUT_POLLS &&
-                this.loginStep == LOGIN_STEP_PHONE &&
+                telegramAuthStep() != TELEGRAM_AUTH_STEP_READY &&
                 !isTelegramAuthReady()) {
                 sleep(250 * Duration.millisecond)
                 waitPolls++
-                this.syncLoginStateFromTelegramAuth()
+                postToMainThread({ => this.syncLoginStateFromTelegramAuth() })
                 let currentStep = telegramAuthStep()
                 if (currentStep == TELEGRAM_AUTH_STEP_PHONE ||
                     currentStep == TELEGRAM_AUTH_STEP_CODE ||
@@ -210,15 +222,17 @@ class EntryView {
                     break
                 }
             }
-            this.isSubmittingPhone = false
-            this.syncLoginStateFromTelegramAuth()
-            if (this.loginStep == LOGIN_STEP_PHONE && !isTelegramAuthReady()) {
-                if (telegramAuthStep() == TELEGRAM_AUTH_STEP_PHONE) {
-                    this.restoreNotice = LOGIN_RESTORE_NEEDS_PHONE_NOTICE
-                } else if (telegramAuthStep() == TELEGRAM_AUTH_STEP_BOOTING && this.phoneNotice.isEmpty()) {
-                    this.restoreNotice = LOGIN_RESTORE_TIMEOUT_NOTICE
+            postToMainThread({ =>
+                this.isSubmittingPhone = false
+                this.syncLoginStateFromTelegramAuth()
+                if (this.loginStep == LOGIN_STEP_PHONE && !isTelegramAuthReady()) {
+                    if (telegramAuthStep() == TELEGRAM_AUTH_STEP_PHONE) {
+                        this.restoreNotice = LOGIN_RESTORE_NEEDS_PHONE_NOTICE
+                    } else if (telegramAuthStep() == TELEGRAM_AUTH_STEP_BOOTING && this.phoneNotice.isEmpty()) {
+                        this.restoreNotice = LOGIN_RESTORE_TIMEOUT_NOTICE
+                    }
                 }
-            }
+            })
         }
     }
 
@@ -332,9 +346,13 @@ class EntryView {
     }
 
     func submitPhoneEntry(): Unit {
-        if (this.isSubmittingPhone) {
+        if (this.isSubmittingPhone && isTelegramAuthBusy()) {
             AppLog.info("submitPhoneEntry: already submitting, ignoring")
             return
+        }
+        if (this.isSubmittingPhone) {
+            AppLog.info("submitPhoneEntry: clearing stale submitting flag")
+            this.isSubmittingPhone = false
         }
         this.phoneNumber = "${LOGIN_PHONE_VALUE}${this.phoneLocalNumber}"
         AppLog.info("submitPhoneEntry: starting, phone length=${this.phoneNumber.size}, apiId length=${this.apiId.size}")
@@ -366,40 +384,47 @@ class EntryView {
                 restartTelegramAuth()
             }
             while (true) {
-                this.syncLoginStateFromTelegramAuth()
+                postToMainThread({ => this.syncLoginStateFromTelegramAuth() })
                 let currentStep = telegramAuthStep()
                 if (currentStep == TELEGRAM_AUTH_STEP_FAILED) {
-                    this.phoneNotice = telegramAuthNotice()
-                    AppLog.info("submitPhoneEntry: auth failed while waiting for phone submit, notice=${this.phoneNotice}")
+                    let failedNotice = telegramAuthNotice()
+                    postToMainThread({ => this.phoneNotice = failedNotice })
+                    AppLog.info("submitPhoneEntry: auth failed while waiting for phone submit, notice=${failedNotice}")
                     break
                 }
                 if (currentStep == TELEGRAM_AUTH_STEP_CODE ||
                     currentStep == TELEGRAM_AUTH_STEP_PASSWORD ||
                     currentStep == TELEGRAM_AUTH_STEP_READY) {
                     AppLog.info("submitPhoneEntry: auth advanced to ${currentStep} before phone submit")
+                    postToMainThread({ => this.syncLoginStateFromTelegramAuth() })
                     return
                 }
                 if (currentStep == TELEGRAM_AUTH_STEP_PHONE) {
                     AppLog.info("submitPhoneEntry: calling submitTelegramPhoneNumber")
                     if (!submitTelegramPhoneNumber(requestedPhoneNumber)) {
-                        this.phoneNotice = telegramAuthNotice()
-                        this.syncLoginStateFromTelegramAuth()
-                        AppLog.info("submitPhoneEntry: submitTelegramPhoneNumber failed, notice=${this.phoneNotice}")
+                        let submitFailedNotice = telegramAuthNotice()
+                        postToMainThread({ =>
+                            this.phoneNotice = submitFailedNotice
+                            this.syncLoginStateFromTelegramAuth()
+                        })
+                        AppLog.info("submitPhoneEntry: submitTelegramPhoneNumber failed, notice=${submitFailedNotice}")
                         break
                     }
                     AppLog.info("submitPhoneEntry: phone submitted successfully, starting polling loop")
                     var waitPolls: Int64 = 0
-                    while (this.loginStep == LOGIN_STEP_PHONE && !isTelegramAuthReady()) {
+                    while (telegramAuthStep() == TELEGRAM_AUTH_STEP_PHONE && !isTelegramAuthReady()) {
                         sleep(250 * Duration.millisecond)
                         waitPolls++
-                        this.syncLoginStateFromTelegramAuth()
-                        if (this.loginStep != LOGIN_STEP_PHONE || !this.phoneNotice.isEmpty()) {
+                        postToMainThread({ => this.syncLoginStateFromTelegramAuth() })
+                        if (!telegramAuthNotice().isEmpty()) {
                             break
                         }
                         if (waitPolls >= LOGIN_PHONE_SUBMIT_TIMEOUT_POLLS && isTelegramAuthBusy()) {
                             markTelegramPhoneSubmitTimedOut(LOGIN_PHONE_SUBMIT_TIMEOUT_NOTICE)
-                            this.syncLoginStateFromTelegramAuth()
-                            this.isSubmittingPhone = false
+                            postToMainThread({ =>
+                                this.syncLoginStateFromTelegramAuth()
+                                this.isSubmittingPhone = false
+                            })
                             AppLog.info("submitPhoneEntry: phone submit timed out after ${waitPolls} polls")
                             break
                         }
@@ -463,7 +488,7 @@ class EntryView {
         let _ = spawn {
             while (this.loginStep == LOGIN_STEP_VERIFICATION && !isTelegramAuthReady()) {
                 sleep(250 * Duration.millisecond)
-                this.syncLoginStateFromTelegramAuth()
+                postToMainThread({ => this.syncLoginStateFromTelegramAuth() })
                 if (this.loginStep != LOGIN_STEP_VERIFICATION || !this.verificationNotice.isEmpty()) {
                     break
                 }
@@ -484,7 +509,7 @@ class EntryView {
         let _ = spawn {
             while (this.loginStep == LOGIN_STEP_PASSWORD && !isTelegramAuthReady()) {
                 sleep(250 * Duration.millisecond)
-                this.syncLoginStateFromTelegramAuth()
+                postToMainThread({ => this.syncLoginStateFromTelegramAuth() })
                 if (this.loginStep != LOGIN_STEP_PASSWORD || !this.passwordNotice.isEmpty()) {
                     break
                 }
